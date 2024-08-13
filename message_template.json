@@ -1,0 +1,24 @@
+{
+  "color": 7391162,
+  "background_images": [
+    {
+      "url": "https://coinchimp-240602.nacho-react.pages.dev/nacho_bot_banner_kspr.png",
+      "weight": 70
+    },
+    {
+      "url": "https://coinchimp-240602.nacho-react.pages.dev/nacho_bot_banner_x.png",
+      "weight": 30
+    }
+  ],
+  "author": {
+    "name": "Nacho the 𐤊at",
+    "icon_url": "https://coinchimp-240602.nacho-react.pages.dev/nacho_bot_logo.png"
+  },
+  "fields": [
+    {
+      "name": "Title",
+      "value": "Message Content",
+      "inline": false
+    }
+  ]
+}

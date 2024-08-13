@@ -1,5 +1,15 @@
 import { Client, GatewayIntentBits } from 'discord.js';
 import dotenv from 'dotenv';
+import { handleStatusCommand } from './commands/status';
+import { handleLinksCommand } from './commands/links';
+import { handleHelpCommand } from './commands/help';
+import { handleHolderCommand } from './commands/holder';
+import { handleDonateCommand } from './commands/donate';
+import express from 'express';
+
+const app = express();
+const port = process.env.PORT || 8080;
+
 
 dotenv.config();
 
@@ -8,34 +18,33 @@ const client = new Client({
 });
 
 client.once('ready', () => {
-  console.log(`${client.user?.tag} is online!`);
+  console.log(`${client.user?.tag} is connected!`);
+});
+
+client.on('messageCreate', (message) => {
+  if (message.author.bot) return;
+
+  const [command, ...args] = message.content.split(' ');
+
+  switch (command) {
+    case '!tokeninfo':
+      handleStatusCommand(message, args);
+      break;
+    case '!links':
+      handleLinksCommand(message);
+      break;
+    case '!helpme':
+      handleHelpCommand(message);
+      break;
+    case '!tokenbalance':
+      handleHolderCommand(message, args);
+      break;
+    case '!donate':
+      handleDonateCommand(message);
+      break;
+    default:
+      break;
+  }
 });
 
 client.login(process.env.DISCORD_TOKEN);
-
-client.on('messageCreate', (message) => {
-    if (message.author.bot) return;
-  
-    const [command, ...args] = message.content.split(' ');
-  
-    switch (command) {
-      case '!donate':
-        // Call the function from `src/commands/donate.ts`
-        break;
-      case '!helpme':
-        // Call the function from `src/commands/help.ts`
-        break;
-      case '!tokenbalance':
-        // Call the function from `src/commands/holder.ts`
-        break;
-      case '!links':
-        // Call the function from `src/commands/links.ts`
-        break;
-      case '!tokeninfo':
-        // Call the function from `src/commands/status.ts`
-        break;
-      default:
-        break;
-    }
-  });
-  
