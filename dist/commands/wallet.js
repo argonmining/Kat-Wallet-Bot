@@ -37,7 +37,7 @@ const promptNetworkSelection = async (channel, userId) => {
         .setStyle(ButtonStyle.Secondary));
     try {
         await channel.send({
-            content: 'Please select the network you want to use:',
+            content: 'Welcome to the Wallet Functions of the NachoBot. Please select the Kaspa network you want to use:',
             components: [row],
         });
         console.log(`[promptNetworkSelection] Sent network selection to user: ${userId}`);
@@ -88,7 +88,7 @@ const sendWalletOptions = async (channel, userId, network) => {
         .setStyle(ButtonStyle.Secondary));
     try {
         await channel.send({
-            content: 'What would you like to do?',
+            content: 'I can create a new wallet for you, or you can import the private key of an existing wallet, What would you like to do?',
             components: [row],
         });
         console.log(`[sendWalletOptions] Wallet options message sent to user: ${userId}`);
