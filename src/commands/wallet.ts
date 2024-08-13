@@ -1,22 +1,73 @@
-import { ChannelType, DMChannel, Message, ActionRowBuilder, ButtonBuilder, ButtonStyle, InteractionCollector, ComponentType, MessageComponentInteraction } from 'discord.js';
-import { generateNewWallet, importWalletFromPrivateKey } from '../../utils/walletFunctions';
+import { Message, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, DMChannel, MessageComponentInteraction, ChannelType } from 'discord.js';
+import { generateNewWallet, importWalletFromPrivateKey } from '../../utils/walletFunctions'; // Ensure this path is correct
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
 
 export const handleWalletCommand = async (message: Message) => {
   if (message.channel.type !== ChannelType.DM) {
     try {
       const dmChannel = await message.author.createDM();
-      dmChannel.send('Welcome to your private wallet session!');
-      sendWalletOptions(dmChannel);
+      dmChannel.send('Welcome to your private wallet session! Please choose an option below:');
+      await promptNetworkSelection(dmChannel);
     } catch (error) {
       console.error('Failed to send DM:', error);
       message.reply('I couldn\'t send you a DM! Please check your privacy settings.');
     }
   } else {
-    sendWalletOptions(message.channel as DMChannel);
+    await promptNetworkSelection(message.channel as DMChannel);
   }
 };
 
-const sendWalletOptions = async (channel: DMChannel) => { // Explicitly typing the channel parameter
+// Function to prompt the user to select a network
+const promptNetworkSelection = async (channel: DMChannel) => {
+  const row = new ActionRowBuilder<ButtonBuilder>()
+    .addComponents(
+      new ButtonBuilder()
+        .setCustomId('mainnet')
+        .setLabel('Mainnet')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('testnet-10')
+        .setLabel('Testnet-10')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('testnet-11')
+        .setLabel('Testnet-11')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+  await channel.send({
+    content: 'Please select the network you want to use:',
+    components: [row],
+  });
+
+  const filter = (interaction: MessageComponentInteraction) => ['mainnet', 'testnet-10', 'testnet-11'].includes(interaction.customId) && interaction.user.id === channel.recipient!.id;
+
+  const collector = channel.createMessageComponentCollector({ filter, componentType: ComponentType.Button, time: 60000 });
+
+  collector.on('collect', async (interaction: MessageComponentInteraction) => {
+    const network = interaction.customId;
+
+    // Save the selected network as an environment variable
+    process.env.KASPA_NETWORK = network;
+
+    await interaction.reply(`You have selected the ${network} network.`);
+
+    // Prompt for further wallet actions (create or import)
+    await sendWalletOptions(channel);
+  });
+
+  collector.on('end', collected => {
+    if (collected.size === 0) {
+      channel.send('You did not select a network. Please restart the wallet setup process.');
+    }
+  });
+};
+
+// Function to prompt the user to create or import a wallet
+const sendWalletOptions = async (channel: DMChannel) => {
   const row = new ActionRowBuilder<ButtonBuilder>()
     .addComponents(
       new ButtonBuilder()
@@ -34,12 +85,11 @@ const sendWalletOptions = async (channel: DMChannel) => { // Explicitly typing t
     components: [row],
   });
 
-  const filter = (interaction: MessageComponentInteraction) => 
-    ['create_wallet', 'import_wallet'].includes(interaction.customId) && interaction.user.id === channel.recipient!.id;
-  
+  const filter = (interaction: MessageComponentInteraction) => ['create_wallet', 'import_wallet'].includes(interaction.customId) && interaction.user.id === channel.recipient!.id;
+
   const collector = channel.createMessageComponentCollector({ filter, componentType: ComponentType.Button, time: 60000 });
 
-  collector.on('collect', async (interaction: MessageComponentInteraction) => { // Explicitly typing the interaction parameter
+  collector.on('collect', async (interaction: MessageComponentInteraction) => {
     if (interaction.customId === 'create_wallet') {
       await interaction.reply('Creating a new wallet...');
       const walletInfo = await generateNewWallet();
@@ -47,10 +97,10 @@ const sendWalletOptions = async (channel: DMChannel) => { // Explicitly typing t
     } else if (interaction.customId === 'import_wallet') {
       await interaction.reply('Please provide your private key to import the wallet:');
 
-      const privateKeyFilter = (response: Message) => response.author.id === interaction.user.id; // Explicitly typing the response parameter
+      const privateKeyFilter = (response: Message) => response.author.id === interaction.user.id;
       const privateKeyCollector = channel.createMessageCollector({ filter: privateKeyFilter, time: 60000 });
 
-      privateKeyCollector.on('collect', async (response: Message) => { // Explicitly typing the response parameter
+      privateKeyCollector.on('collect', async (response: Message) => {
         const privateKey = response.content.trim();
         try {
           const walletInfo = await importWalletFromPrivateKey(privateKey);
