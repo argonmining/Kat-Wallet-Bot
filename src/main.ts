@@ -1,11 +1,11 @@
 import { Client, GatewayIntentBits } from 'discord.js';
 import dotenv from 'dotenv';
-import { handleStatusCommand } from './commands/status';
-import { handleLinksCommand } from './commands/links';
-import { handleHelpCommand } from './commands/help';
-import { handleHolderCommand } from './commands/holder';
-import { handleDonateCommand } from './commands/donate';
-import { handleWalletCommand } from './commands/wallet'; // Import the new command handler
+import { handleStatusCommand } from './commands/status.js';
+import { handleLinksCommand } from './commands/links.js';
+import { handleHelpCommand } from './commands/help.js';
+import { handleHolderCommand } from './commands/holder.js';
+import { handleDonateCommand } from './commands/donate.js';
+import { handleWalletCommand } from './commands/wallet.js'; // Import the new command handler
 import express from 'express';
 
 const app = express();

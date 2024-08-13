@@ -42,7 +42,7 @@ export async function generatePrivateKeyFromMnemonic(mnemonic: string): Promise<
 }
 
 // Driver function to generate mnemonic and private key
-async function main() {
+export async function main() {
   try {
     // Generate mnemonic
     const mnemonic = await generate24WordMnemonic();
@@ -62,6 +62,7 @@ async function main() {
   }
 }
 
-if (require.main === module) {
+// Automatically run the main function if this module is executed directly
+if (import.meta.url === new URL(import.meta.url, import.meta.url).href) {
   main();
 }

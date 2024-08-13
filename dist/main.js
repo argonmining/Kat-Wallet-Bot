@@ -1,22 +1,17 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-const discord_js_1 = require("discord.js");
-const dotenv_1 = __importDefault(require("dotenv"));
-const status_1 = require("./commands/status");
-const links_1 = require("./commands/links");
-const help_1 = require("./commands/help");
-const holder_1 = require("./commands/holder");
-const donate_1 = require("./commands/donate");
-const wallet_1 = require("./commands/wallet"); // Import the new command handler
-const express_1 = __importDefault(require("express"));
-const app = (0, express_1.default)();
+import { Client, GatewayIntentBits } from 'discord.js';
+import dotenv from 'dotenv';
+import { handleStatusCommand } from './commands/status.js';
+import { handleLinksCommand } from './commands/links.js';
+import { handleHelpCommand } from './commands/help.js';
+import { handleHolderCommand } from './commands/holder.js';
+import { handleDonateCommand } from './commands/donate.js';
+import { handleWalletCommand } from './commands/wallet.js'; // Import the new command handler
+import express from 'express';
+const app = express();
 const port = process.env.PORT || 8080;
-dotenv_1.default.config();
-const client = new discord_js_1.Client({
-    intents: [discord_js_1.GatewayIntentBits.Guilds, discord_js_1.GatewayIntentBits.GuildMessages, discord_js_1.GatewayIntentBits.MessageContent, discord_js_1.GatewayIntentBits.DirectMessages],
+dotenv.config();
+const client = new Client({
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.DirectMessages],
 });
 client.once('ready', () => {
     console.log(`${client.user?.tag} is connected!`);
@@ -27,22 +22,22 @@ client.on('messageCreate', (message) => {
     const [command, ...args] = message.content.split(' ');
     switch (command) {
         case '!tokeninfo':
-            (0, status_1.handleStatusCommand)(message, args);
+            handleStatusCommand(message, args);
             break;
         case '!links':
-            (0, links_1.handleLinksCommand)(message);
+            handleLinksCommand(message);
             break;
         case '!helpme':
-            (0, help_1.handleHelpCommand)(message);
+            handleHelpCommand(message);
             break;
         case '!tokenbalance':
-            (0, holder_1.handleHolderCommand)(message, args);
+            handleHolderCommand(message, args);
             break;
         case '!donate':
-            (0, donate_1.handleDonateCommand)(message);
+            handleDonateCommand(message);
             break;
         case '!wallet':
-            (0, wallet_1.handleWalletCommand)(message); // New command handler
+            handleWalletCommand(message); // New command handler
             break;
         default:
             break;

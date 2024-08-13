@@ -1,46 +1,19 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.generate24WordMnemonic = generate24WordMnemonic;
-exports.generatePrivateKeyFromMnemonic = generatePrivateKeyFromMnemonic;
-const bip39 = __importStar(require("bip39"));
-const crypto_1 = require("crypto");
-const bip32_1 = require("bip32");
-const ecc = __importStar(require("tiny-secp256k1")); // Secp256k1 library for elliptic curve operations
+import * as bip39 from 'bip39';
+import { randomBytes } from 'crypto';
+import { BIP32Factory } from 'bip32';
+import * as ecc from 'tiny-secp256k1'; // Secp256k1 library for elliptic curve operations
 // Initialize BIP32 with the secp256k1 library
-const bip32 = (0, bip32_1.BIP32Factory)(ecc);
+const bip32 = BIP32Factory(ecc);
 // Function to generate a 24-word mnemonic phrase
-async function generate24WordMnemonic() {
+export async function generate24WordMnemonic() {
     // Generate 256 bits (32 bytes) of entropy
-    const entropy = (0, crypto_1.randomBytes)(32);
+    const entropy = randomBytes(32);
     // Generate mnemonic using the entropy
     const mnemonic = bip39.entropyToMnemonic(entropy.toString('hex'));
     return mnemonic;
 }
 // Function to generate a private key from mnemonic
-async function generatePrivateKeyFromMnemonic(mnemonic) {
+export async function generatePrivateKeyFromMnemonic(mnemonic) {
     // Validate the mnemonic
     if (!bip39.validateMnemonic(mnemonic)) {
         throw new Error('Invalid mnemonic phrase');
@@ -59,7 +32,7 @@ async function generatePrivateKeyFromMnemonic(mnemonic) {
     return accountNode.privateKey.toString('hex');
 }
 // Driver function to generate mnemonic and private key
-async function main() {
+export async function main() {
     try {
         // Generate mnemonic
         const mnemonic = await generate24WordMnemonic();
@@ -78,6 +51,7 @@ async function main() {
         }
     }
 }
-if (require.main === module) {
+// Automatically run the main function if this module is executed directly
+if (import.meta.url === new URL(import.meta.url, import.meta.url).href) {
     main();
 }

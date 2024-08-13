@@ -1,5 +1,5 @@
-import { generate24WordMnemonic, generatePrivateKeyFromMnemonic } from './keyGen';
-import { RpcClient, PrivateKey, NetworkType } from '../wasm/kaspa'; // Import necessary WASM components
+import { generate24WordMnemonic, generatePrivateKeyFromMnemonic } from './keyGen.js';
+import { RpcClient, PrivateKey, NetworkType } from '../../wasm/kaspa/kaspa.js'; // Import necessary WASM components
 
 // Assume this map is shared between the modules (e.g., imported from another file if needed)
 const userNetworkSelections = new Map<string, string>();
