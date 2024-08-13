@@ -7,7 +7,7 @@ import * as ecc from 'tiny-secp256k1'; // Secp256k1 library for elliptic curve o
 const bip32 = BIP32Factory(ecc);
 
 // Function to generate a 24-word mnemonic phrase
-async function generate24WordMnemonic(): Promise<string> {
+export async function generate24WordMnemonic(): Promise<string> {
   // Generate 256 bits (32 bytes) of entropy
   const entropy = randomBytes(32);
   
@@ -17,7 +17,7 @@ async function generate24WordMnemonic(): Promise<string> {
 }
 
 // Function to generate a private key from mnemonic
-async function generatePrivateKeyFromMnemonic(mnemonic: string): Promise<string> {
+export async function generatePrivateKeyFromMnemonic(mnemonic: string): Promise<string> {
   // Validate the mnemonic
   if (!bip39.validateMnemonic(mnemonic)) {
     throw new Error('Invalid mnemonic phrase');
@@ -31,6 +31,11 @@ async function generatePrivateKeyFromMnemonic(mnemonic: string): Promise<string>
 
   // Derive private key (from the root)
   const accountNode = rootNode.derivePath("m/44'/0'/0'/0/0"); // Example derivation path
+
+  // Check if the private key is defined
+  if (!accountNode.privateKey) {
+    throw new Error('Failed to derive private key');
+  }
 
   // Return the private key in the specified format
   return accountNode.privateKey.toString('hex');
@@ -48,8 +53,15 @@ async function main() {
     console.log(`PRIVATE_KEY="${privateKey}"`);
 
   } catch (error) {
-    console.error(`Error: ${error.message}`);
+    // Safely accessing the error message
+    if (error instanceof Error) {
+      console.error(`Error: ${error.message}`);
+    } else {
+      console.error('An unknown error occurred');
+    }
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
