@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc",
+    "postbuild": "cp -r wasm dist/wasm",
     "start": "node dist/main.js"
   },
   "keywords": [],
