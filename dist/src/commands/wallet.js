@@ -1,20 +1,15 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handleWalletCommand = void 0;
 const discord_js_1 = require("discord.js");
 const walletFunctions_1 = require("../../utils/walletFunctions"); // Ensure this path is correct
-const dotenv_1 = __importDefault(require("dotenv"));
-// Load environment variables
-dotenv_1.default.config();
+// In-memory storage for user network selections
+const userNetworkSelections = new Map();
 const handleWalletCommand = async (message) => {
     if (message.channel.type !== discord_js_1.ChannelType.DM) {
         try {
             const dmChannel = await message.author.createDM();
-            dmChannel.send('Welcome to your private wallet session! Please choose an option below:');
-            await promptNetworkSelection(dmChannel);
+            await promptNetworkSelection(dmChannel, message.author.id); // Pass user ID to track selection
         }
         catch (error) {
             console.error('Failed to send DM:', error);
@@ -22,12 +17,12 @@ const handleWalletCommand = async (message) => {
         }
     }
     else {
-        await promptNetworkSelection(message.channel);
+        await promptNetworkSelection(message.channel, message.author.id); // Pass user ID to track selection
     }
 };
 exports.handleWalletCommand = handleWalletCommand;
 // Function to prompt the user to select a network
-const promptNetworkSelection = async (channel) => {
+const promptNetworkSelection = async (channel, userId) => {
     const row = new discord_js_1.ActionRowBuilder()
         .addComponents(new discord_js_1.ButtonBuilder()
         .setCustomId('mainnet')
@@ -43,15 +38,16 @@ const promptNetworkSelection = async (channel) => {
         content: 'Please select the network you want to use:',
         components: [row],
     });
-    const filter = (interaction) => ['mainnet', 'testnet-10', 'testnet-11'].includes(interaction.customId) && interaction.user.id === channel.recipient.id;
+    const filter = (interaction) => ['mainnet', 'testnet-10', 'testnet-11'].includes(interaction.customId) &&
+        interaction.user.id === userId;
     const collector = channel.createMessageComponentCollector({ filter, componentType: discord_js_1.ComponentType.Button, time: 60000 });
     collector.on('collect', async (interaction) => {
         const network = interaction.customId;
-        // Save the selected network as an environment variable
-        process.env.KASPA_NETWORK = network;
+        // Save the selected network in the Map with user ID as the key
+        userNetworkSelections.set(userId, network);
         await interaction.reply(`You have selected the ${network} network.`);
-        // Prompt for further wallet actions (create or import)
-        await sendWalletOptions(channel);
+        // Now proceed to ask for wallet creation or import
+        await sendWalletOptions(channel, userId);
     });
     collector.on('end', collected => {
         if (collected.size === 0) {
@@ -60,7 +56,7 @@ const promptNetworkSelection = async (channel) => {
     });
 };
 // Function to prompt the user to create or import a wallet
-const sendWalletOptions = async (channel) => {
+const sendWalletOptions = async (channel, userId) => {
     const row = new discord_js_1.ActionRowBuilder()
         .addComponents(new discord_js_1.ButtonBuilder()
         .setCustomId('create_wallet')
@@ -73,22 +69,23 @@ const sendWalletOptions = async (channel) => {
         content: 'What would you like to do?',
         components: [row],
     });
-    const filter = (interaction) => ['create_wallet', 'import_wallet'].includes(interaction.customId) && interaction.user.id === channel.recipient.id;
+    const filter = (interaction) => ['create_wallet', 'import_wallet'].includes(interaction.customId) &&
+        interaction.user.id === userId;
     const collector = channel.createMessageComponentCollector({ filter, componentType: discord_js_1.ComponentType.Button, time: 60000 });
     collector.on('collect', async (interaction) => {
         if (interaction.customId === 'create_wallet') {
             await interaction.reply('Creating a new wallet...');
-            const walletInfo = await (0, walletFunctions_1.generateNewWallet)();
+            const walletInfo = await (0, walletFunctions_1.generateNewWallet)(userId);
             interaction.followUp(`Your new wallet has been created!\nAddress: ${walletInfo.address}\nMnemonic: ${walletInfo.mnemonic}`);
         }
         else if (interaction.customId === 'import_wallet') {
             await interaction.reply('Please provide your private key to import the wallet:');
-            const privateKeyFilter = (response) => response.author.id === interaction.user.id;
+            const privateKeyFilter = (response) => response.author.id === userId;
             const privateKeyCollector = channel.createMessageCollector({ filter: privateKeyFilter, time: 60000 });
             privateKeyCollector.on('collect', async (response) => {
                 const privateKey = response.content.trim();
                 try {
-                    const walletInfo = await (0, walletFunctions_1.importWalletFromPrivateKey)(privateKey);
+                    const walletInfo = await (0, walletFunctions_1.importWalletFromPrivateKey)(privateKey, userId);
                     response.reply(`Wallet imported successfully!\nAddress: ${walletInfo.address}`);
                 }
                 catch (error) {
