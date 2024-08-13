@@ -1,21 +1,30 @@
 import { generate24WordMnemonic, generatePrivateKeyFromMnemonic } from './keyGen.js';
-import { PrivateKey, NetworkType } from '../../wasm/kaspa/kaspa.js'; // Import necessary WASM components
-// Assume this map is shared between the modules (e.g., imported from another file if needed)
-const userNetworkSelections = new Map();
-// Function to generate a new wallet, including mnemonic, private key, and Kaspa address
-export const generateNewWallet = async (userId) => {
+import { PrivateKey, NetworkType } from '../../wasm/kaspa/kaspa.js';
+export const generateNewWallet = async (userId, network) => {
     const mnemonic = await generate24WordMnemonic();
     const privateKeyHex = await generatePrivateKeyFromMnemonic(mnemonic);
     const privateKey = new PrivateKey(privateKeyHex);
-    // Retrieve the network type for the user
-    const network = userNetworkSelections.get(userId) || NetworkType.Mainnet; // Fallback to MAINNET if not set
-    const kaspaAddress = privateKey.toPublicKey().toAddress(network);
+    let networkType;
+    if (network === 'Mainnet') {
+        networkType = NetworkType.Mainnet;
+    }
+    else {
+        networkType = NetworkType.Testnet;
+    }
+    console.log(`[generateNewWallet] User ${userId} selected network: ${network}, applying network type: ${networkType === NetworkType.Mainnet ? 'Mainnet' : 'Testnet'}`);
+    const kaspaAddress = privateKey.toPublicKey().toAddress(networkType);
     return { mnemonic, privateKey: privateKey.toString(), address: kaspaAddress.toString() };
 };
-// Function to import a wallet using a private key and derive the corresponding Kaspa address
-export const importWalletFromPrivateKey = async (privateKeyHex, userId) => {
+export const importWalletFromPrivateKey = async (privateKeyHex, userId, network) => {
     const privateKey = new PrivateKey(privateKeyHex);
-    const network = userNetworkSelections.get(userId) || NetworkType.Mainnet; // Fallback to MAINNET if not set
-    const kaspaAddress = privateKey.toPublicKey().toAddress(network);
+    let networkType;
+    if (network === 'Mainnet') {
+        networkType = NetworkType.Mainnet;
+    }
+    else {
+        networkType = NetworkType.Testnet;
+    }
+    console.log(`[importWalletFromPrivateKey] User ${userId} selected network: ${network}, applying network type: ${networkType === NetworkType.Mainnet ? 'Mainnet' : 'Testnet'}`);
+    const kaspaAddress = privateKey.toPublicKey().toAddress(networkType);
     return { privateKey: privateKey.toString(), address: kaspaAddress.toString() };
 };

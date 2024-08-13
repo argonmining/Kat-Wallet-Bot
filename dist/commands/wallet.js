@@ -1,7 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, ChannelType } from 'discord.js';
-import { generateNewWallet, importWalletFromPrivateKey } from '../utils/walletFunctions.js'; // Ensure this path is correct
-// In-memory storage for user network selections
-const userNetworkSelections = new Map();
+import { generateNewWallet, importWalletFromPrivateKey } from '../utils/walletFunctions.js';
+// Store user settings, including network selection
+const userSettings = new Map();
 export const handleWalletCommand = async (message) => {
     console.log(`[handleWalletCommand] Command triggered by user: ${message.author.id}`);
     if (message.channel.type !== ChannelType.DM) {
@@ -9,7 +9,7 @@ export const handleWalletCommand = async (message) => {
             console.log(`[handleWalletCommand] Not a DM, attempting to create a DM channel for user: ${message.author.id}`);
             const dmChannel = await message.author.createDM();
             console.log(`[handleWalletCommand] DM channel created successfully for user: ${message.author.id}`);
-            await promptNetworkSelection(dmChannel, message.author.id); // This should run first
+            await promptNetworkSelection(dmChannel, message.author.id);
         }
         catch (error) {
             console.error(`[handleWalletCommand] Failed to send DM to user: ${message.author.id}`, error);
@@ -18,22 +18,21 @@ export const handleWalletCommand = async (message) => {
     }
     else {
         console.log(`[handleWalletCommand] Already in DM, proceeding to network selection for user: ${message.author.id}`);
-        await promptNetworkSelection(message.channel, message.author.id); // This should run first
+        await promptNetworkSelection(message.channel, message.author.id);
     }
-    console.log(`[handleWalletCommand] Finished network selection, now presenting wallet options.`);
+    console.log(`[handleWalletCommand] Waiting for network selection to complete before presenting wallet options.`);
 };
-// Function to prompt the user to select a network
 const promptNetworkSelection = async (channel, userId) => {
     console.log(`[promptNetworkSelection] Starting network selection for user: ${userId}`);
     const row = new ActionRowBuilder()
         .addComponents(new ButtonBuilder()
-        .setCustomId('mainnet')
+        .setCustomId('Mainnet')
         .setLabel('Mainnet')
         .setStyle(ButtonStyle.Primary), new ButtonBuilder()
-        .setCustomId('testnet-10')
+        .setCustomId('Testnet-10')
         .setLabel('Testnet-10')
         .setStyle(ButtonStyle.Secondary), new ButtonBuilder()
-        .setCustomId('testnet-11')
+        .setCustomId('Testnet-11')
         .setLabel('Testnet-11')
         .setStyle(ButtonStyle.Secondary));
     try {
@@ -45,38 +44,40 @@ const promptNetworkSelection = async (channel, userId) => {
     }
     catch (error) {
         console.error(`[promptNetworkSelection] Failed to send network selection to user: ${userId}`, error);
-        return; // If sending fails, exit early.
+        return;
     }
-    const filter = (interaction) => ['mainnet', 'testnet-10', 'testnet-11'].includes(interaction.customId) &&
+    const filter = (interaction) => ['Mainnet', 'Testnet-10', 'Testnet-11'].includes(interaction.customId) &&
         interaction.user.id === userId;
     const collector = channel.createMessageComponentCollector({ filter, componentType: ComponentType.Button, time: 60000 });
+    let hasReplied = false;
     collector.on('collect', async (interaction) => {
-        const network = interaction.customId;
+        if (hasReplied)
+            return; // Ensure only one interaction is processed
+        hasReplied = true;
+        const network = interaction.customId === 'Mainnet' ? 'Mainnet' : 'Testnet';
         console.log(`[promptNetworkSelection] User ${userId} selected network: ${network}`);
-        userNetworkSelections.set(userId, network);
+        // Store the network selection directly
+        userSettings.set(userId, { network });
         try {
-            await interaction.reply(`You have selected the ${network} network.`);
+            await interaction.deferReply();
+            await interaction.followUp(`You have selected the ${network} network.`);
             console.log(`[promptNetworkSelection] Confirmation sent for network: ${network}`);
         }
         catch (error) {
             console.error(`[promptNetworkSelection] Failed to send confirmation for network: ${network}`, error);
+            return;
         }
-        // Proceed only after network selection
-        await sendWalletOptions(channel, userId);
+        console.log(`[promptNetworkSelection] Current network stored for user ${userId}: ${userSettings.get(userId)?.network}`);
+        // Pass the network directly to the next step
+        await sendWalletOptions(channel, userId, network);
     });
     collector.on('end', (collected) => {
-        if (collected.size === 0) {
-            console.log(`[promptNetworkSelection] No network selected by user: ${userId}`);
-            channel.send('You did not select a network. Please restart the wallet setup process.');
-        }
-        else {
-            console.log(`[promptNetworkSelection] Network selection ended for user: ${userId}`);
-        }
+        console.log(`[promptNetworkSelection] Network selection ended for user: ${userId}`);
+        hasReplied = false; // Reset for next interaction
     });
 };
-// Function to prompt the user to create or import a wallet
-const sendWalletOptions = async (channel, userId) => {
-    console.log(`[sendWalletOptions] Commented Out - should not be called.`);
+const sendWalletOptions = async (channel, userId, network) => {
+    console.log(`[sendWalletOptions] Presenting wallet options to user: ${userId}`);
     const row = new ActionRowBuilder()
         .addComponents(new ButtonBuilder()
         .setCustomId('create_wallet')
@@ -99,31 +100,46 @@ const sendWalletOptions = async (channel, userId) => {
     const filter = (interaction) => ['create_wallet', 'import_wallet'].includes(interaction.customId) &&
         interaction.user.id === userId;
     const collector = channel.createMessageComponentCollector({ filter, componentType: ComponentType.Button, time: 60000 });
+    let hasReplied = false;
     collector.on('collect', async (interaction) => {
-        if (interaction.customId === 'create_wallet') {
-            console.log(`[sendWalletOptions] User ${userId} selected to create a new wallet`);
-            await interaction.reply('Creating a new wallet...');
-            const walletInfo = await generateNewWallet(userId);
-            interaction.followUp(`Your new wallet has been created!\nAddress: ${walletInfo.address}\nMnemonic: ${walletInfo.mnemonic}`);
+        if (hasReplied)
+            return; // Ensure only one interaction is processed
+        hasReplied = true;
+        try {
+            await interaction.deferReply();
+            console.log(`[sendWalletOptions] User ${userId} has chosen an option.`);
+            console.log(`[sendWalletOptions] Network passed to wallet function: ${network}`);
+            if (interaction.customId === 'create_wallet') {
+                console.log(`[sendWalletOptions] User ${userId} selected to create a new wallet`);
+                await interaction.followUp('Creating a new wallet...');
+                const walletInfo = await generateNewWallet(userId, network);
+                interaction.followUp(`Your new wallet has been created!\nAddress: ${walletInfo.address}\nMnemonic: ${walletInfo.mnemonic}`);
+            }
+            else if (interaction.customId === 'import_wallet') {
+                console.log(`[sendWalletOptions] User ${userId} selected to import a wallet`);
+                await interaction.followUp('Please provide your private key to import the wallet:');
+                const privateKeyFilter = (response) => response.author.id === userId;
+                const privateKeyCollector = channel.createMessageCollector({ filter: privateKeyFilter, time: 60000 });
+                privateKeyCollector.on('collect', async (response) => {
+                    const privateKey = response.content.trim();
+                    try {
+                        const walletInfo = await importWalletFromPrivateKey(privateKey, userId, network);
+                        response.reply(`Wallet imported successfully!\nAddress: ${walletInfo.address}`);
+                    }
+                    catch (error) {
+                        console.error(`[sendWalletOptions] Failed to import wallet for user: ${userId}`, error);
+                        response.reply('Failed to import wallet. Please check the private key and try again.');
+                    }
+                    privateKeyCollector.stop();
+                });
+            }
         }
-        else if (interaction.customId === 'import_wallet') {
-            console.log(`[sendWalletOptions] User ${userId} selected to import a wallet`);
-            await interaction.reply('Please provide your private key to import the wallet:');
-            const privateKeyFilter = (response) => response.author.id === userId;
-            const privateKeyCollector = channel.createMessageCollector({ filter: privateKeyFilter, time: 60000 });
-            privateKeyCollector.on('collect', async (response) => {
-                const privateKey = response.content.trim();
-                try {
-                    const walletInfo = await importWalletFromPrivateKey(privateKey, userId);
-                    response.reply(`Wallet imported successfully!\nAddress: ${walletInfo.address}`);
-                }
-                catch (error) {
-                    console.error(`[sendWalletOptions] Failed to import wallet for user: ${userId}`, error);
-                    response.reply('Failed to import wallet. Please check the private key and try again.');
-                }
-                privateKeyCollector.stop();
-            });
+        catch (error) {
+            console.error(`[sendWalletOptions] Failed to process wallet options for user: ${userId}`, error);
         }
-        collector.stop();
+    });
+    collector.on('end', () => {
+        console.log(`[sendWalletOptions] Wallet options interaction ended for user: ${userId}`);
+        hasReplied = false; // Reset for next interaction
     });
 };
