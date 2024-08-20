@@ -1,8 +1,7 @@
 import { Message, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, DMChannel, MessageComponentInteraction, ChannelType, Collection } from 'discord.js';
-import { generateNewWallet, importWalletFromPrivateKey } from '../utils/walletFunctions.js';
+import { generateNewWallet, importWalletFromPrivateKey, sendKaspa } from '../utils/walletFunctions.js';
 
-// Store user settings, including network selection
-const userSettings = new Map<string, { network: string }>();
+const userSettings = new Map<string, { network: string; privateKey: string; address: string }>();
 
 export const handleWalletCommand = async (message: Message) => {
     console.log(`[handleWalletCommand] Command triggered by user: ${message.author.id}`);
@@ -46,7 +45,7 @@ const promptNetworkSelection = async (channel: DMChannel, userId: string) => {
 
     try {
         await channel.send({
-            content: 'Welcome to the Wallet Functions of the NachoBot. Please select the Kaspa network you want to use:',
+            content: 'Please select the network you want to use:',
             components: [row],
         });
         console.log(`[promptNetworkSelection] Sent network selection to user: ${userId}`);
@@ -64,14 +63,13 @@ const promptNetworkSelection = async (channel: DMChannel, userId: string) => {
     let hasReplied = false;
 
     collector.on('collect', async (interaction: MessageComponentInteraction) => {
-        if (hasReplied) return;  // Ensure only one interaction is processed
+        if (hasReplied) return;
         hasReplied = true;
 
         const network = interaction.customId === 'Mainnet' ? 'Mainnet' : 'Testnet';
         console.log(`[promptNetworkSelection] User ${userId} selected network: ${network}`);
 
-        // Store the network selection directly
-        userSettings.set(userId, { network });
+        userSettings.set(userId, { network, privateKey: '', address: '' });
 
         try {
             await interaction.deferReply();
@@ -84,13 +82,12 @@ const promptNetworkSelection = async (channel: DMChannel, userId: string) => {
 
         console.log(`[promptNetworkSelection] Current network stored for user ${userId}: ${userSettings.get(userId)?.network}`);
 
-        // Pass the network directly to the next step
         await sendWalletOptions(channel, userId, network);
     });
 
-    collector.on('end', (collected: Collection<string, MessageComponentInteraction>) => {
+    collector.on('end', () => {
         console.log(`[promptNetworkSelection] Network selection ended for user: ${userId}`);
-        hasReplied = false;  // Reset for next interaction
+        hasReplied = false;
     });
 };
 
@@ -110,7 +107,7 @@ const sendWalletOptions = async (channel: DMChannel, userId: string, network: st
 
     try {
         await channel.send({
-            content: 'I can create a new wallet for you, or you can import the private key of an existing wallet, What would you like to do?',
+            content: 'I can create a new wallet for you, or you can import the private key of an existing wallet. What would you like to do?',
             components: [row],
         });
         console.log(`[sendWalletOptions] Wallet options message sent to user: ${userId}`);
@@ -125,12 +122,7 @@ const sendWalletOptions = async (channel: DMChannel, userId: string, network: st
 
     const collector = channel.createMessageComponentCollector({ filter, componentType: ComponentType.Button, time: 60000 });
 
-    let hasReplied = false;
-
     collector.on('collect', async (interaction: MessageComponentInteraction) => {
-        if (hasReplied) return;  // Ensure only one interaction is processed
-        hasReplied = true;
-
         try {
             await interaction.deferReply();
 
@@ -141,6 +133,7 @@ const sendWalletOptions = async (channel: DMChannel, userId: string, network: st
                 console.log(`[sendWalletOptions] User ${userId} selected to create a new wallet`);
                 await interaction.followUp('Creating a new wallet...');
                 const walletInfo = await generateNewWallet(userId, network);
+                userSettings.set(userId, { ...userSettings.get(userId), privateKey: walletInfo.privateKey, address: walletInfo.address });
                 interaction.followUp(`Your new wallet has been created!\nAddress: ${walletInfo.address}\nMnemonic: ${walletInfo.mnemonic}`);
             } else if (interaction.customId === 'import_wallet') {
                 console.log(`[sendWalletOptions] User ${userId} selected to import a wallet`);
@@ -153,6 +146,7 @@ const sendWalletOptions = async (channel: DMChannel, userId: string, network: st
                     const privateKey = response.content.trim();
                     try {
                         const walletInfo = await importWalletFromPrivateKey(privateKey, userId, network);
+                        userSettings.set(userId, { ...userSettings.get(userId), privateKey: walletInfo.privateKey, address: walletInfo.address });
                         response.reply(`Wallet imported successfully!\nAddress: ${walletInfo.address}`);
                     } catch (error) {
                         console.error(`[sendWalletOptions] Failed to import wallet for user: ${userId}`, error);
@@ -161,6 +155,8 @@ const sendWalletOptions = async (channel: DMChannel, userId: string, network: st
                     privateKeyCollector.stop();
                 });
             }
+
+            await promptWalletActions(channel, userId);
         } catch (error) {
             console.error(`[sendWalletOptions] Failed to process wallet options for user: ${userId}`, error);
         }
@@ -168,6 +164,58 @@ const sendWalletOptions = async (channel: DMChannel, userId: string, network: st
 
     collector.on('end', () => {
         console.log(`[sendWalletOptions] Wallet options interaction ended for user: ${userId}`);
-        hasReplied = false;  // Reset for next interaction
+    });
+};
+
+const promptWalletActions = async (channel: DMChannel, userId: string) => {
+    console.log(`[promptWalletActions] Prompting user ${userId} for further wallet actions.`);
+    const row = new ActionRowBuilder<ButtonBuilder>()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('send_kaspa')
+                .setLabel('Send Kaspa')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId('view_balance')
+                .setLabel('View Balance')
+                .setStyle(ButtonStyle.Secondary)
+        );
+
+    try {
+        await channel.send({
+            content: 'What would you like to do next?',
+            components: [row],
+        });
+        console.log(`[promptWalletActions] Wallet actions prompt sent to user: ${userId}`);
+    } catch (error) {
+        console.error(`[promptWalletActions] Failed to send wallet actions prompt to user: ${userId}`, error);
+        return;
+    }
+
+    const filter = (interaction: MessageComponentInteraction) =>
+        ['send_kaspa', 'view_balance'].includes(interaction.customId) &&
+        interaction.user.id === userId;
+
+    const collector = channel.createMessageComponentCollector({ filter, componentType: ComponentType.Button, time: 60000 });
+
+    collector.on('collect', async (interaction: MessageComponentInteraction) => {
+        try {
+            await interaction.deferReply();
+
+            if (interaction.customId === 'send_kaspa') {
+                console.log(`[promptWalletActions] User ${userId} selected to send Kaspa`);
+                await interaction.followUp('Please provide the destination address and amount to send:');
+                // Implement further steps to collect address and amount, then call sendKaspa()
+            } else if (interaction.customId === 'view_balance') {
+                console.log(`[promptWalletActions] User ${userId} selected to view balance`);
+                // Implement view balance functionality
+            }
+        } catch (error) {
+            console.error(`[promptWalletActions] Failed to process wallet actions for user: ${userId}`, error);
+        }
+    });
+
+    collector.on('end', () => {
+        console.log(`[promptWalletActions] Wallet actions interaction ended for user: ${userId}`);
     });
 };
