@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/fixImports.js",
     "postbuild": "cp -r wasm dist/wasm",
     "start": "node dist/main.js",
     "clean": "rm -rf dist"

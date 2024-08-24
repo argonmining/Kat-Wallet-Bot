@@ -1,30 +1,47 @@
-import { Message, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, DMChannel, MessageComponentInteraction, ChannelType, Collection } from 'discord.js';
-import { generateNewWallet, importWalletFromPrivateKey, sendKaspa } from '../utils/walletFunctions.js';
-
-const userSettings = new Map<string, { network: string; privateKey: string; address: string }>();
+import { Message, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, DMChannel, MessageComponentInteraction, ChannelType, TextBasedChannel } from 'discord.js';
+import { generateNewWallet } from '../utils/generateNewWallet';
+import { importWalletFromPrivateKey } from '../utils/importWallet';
+import { sendKaspa } from '../utils/sendKaspa';
+import { getBalance } from '../utils/getBalance';
+import { userSettings, Network } from '../utils/userSettings';
+import { getRpcClient } from '../utils/rpcConnection';
+import axios from 'axios';
+import { EmbedBuilder } from '@discordjs/builders';
 
 export const handleWalletCommand = async (message: Message) => {
-    console.log(`[handleWalletCommand] Command triggered by user: ${message.author.id}`);
+    console.log(`[handleWalletCommand] Command triggered by user: ${message.author.id} in channel type: ${message.channel.type}`);
 
-    if (message.channel.type !== ChannelType.DM) {
+    if (message.channel.type === ChannelType.DM) {
+        console.log(`[handleWalletCommand] Command received in DM, proceeding with wallet actions for user: ${message.author.id}`);
+        await handleWalletActions(message.channel, message.author.id);
+    } else {
         try {
             console.log(`[handleWalletCommand] Not a DM, attempting to create a DM channel for user: ${message.author.id}`);
             const dmChannel = await message.author.createDM();
             console.log(`[handleWalletCommand] DM channel created successfully for user: ${message.author.id}`);
-            await promptNetworkSelection(dmChannel, message.author.id);
+            await message.reply('I\'ve sent you a DM with wallet options!');
+            await handleWalletActions(dmChannel, message.author.id);
         } catch (error) {
             console.error(`[handleWalletCommand] Failed to send DM to user: ${message.author.id}`, error);
-            message.reply('I couldn\'t send you a DM! Please check your privacy settings.');
+            await message.reply('I couldn\'t send you a DM! Please check your privacy settings.');
         }
-    } else {
-        console.log(`[handleWalletCommand] Already in DM, proceeding to network selection for user: ${message.author.id}`);
-        await promptNetworkSelection(message.channel as DMChannel, message.author.id);
     }
-
-    console.log(`[handleWalletCommand] Waiting for network selection to complete before presenting wallet options.`);
 };
 
-const promptNetworkSelection = async (channel: DMChannel, userId: string) => {
+const handleWalletActions = async (channel: DMChannel | TextBasedChannel, userId: string) => {
+    console.log(`[handleWalletActions] Starting wallet actions for user: ${userId}`);
+    const userSession = userSettings.get(userId);
+    
+    if (!userSession || !userSession.network) {
+        console.log(`[handleWalletActions] No session or network found for user: ${userId}, starting network selection`);
+        await promptNetworkSelection(channel, userId);
+    } else {
+        console.log(`[handleWalletActions] Existing session found for user: ${userId}, prompting wallet actions`);
+        await promptWalletActions(channel, userId);
+    }
+};
+
+const promptNetworkSelection = async (channel: DMChannel | TextBasedChannel, userId: string) => {
     console.log(`[promptNetworkSelection] Starting network selection for user: ${userId}`);
 
     const row = new ActionRowBuilder<ButtonBuilder>()
@@ -43,179 +60,264 @@ const promptNetworkSelection = async (channel: DMChannel, userId: string) => {
                 .setStyle(ButtonStyle.Secondary)
         );
 
+    await channel.send({
+        content: 'Please select the network you want to use:',
+        components: [row],
+    });
+
+    const filter = (i: MessageComponentInteraction) => 
+        ['Mainnet', 'Testnet-10', 'Testnet-11'].includes(i.customId) && i.user.id === userId;
+
     try {
-        await channel.send({
-            content: 'Please select the network you want to use:',
-            components: [row],
-        });
-        console.log(`[promptNetworkSelection] Sent network selection to user: ${userId}`);
+        const interaction = await channel.awaitMessageComponent({ filter, time: 60000 });
+        const userNetworkChoice = interaction.customId as Network;
+        await interaction.update({ content: `You selected ${userNetworkChoice}`, components: [] });
+        
+        // Set the user's network choice
+        const existingSession = userSettings.get(userId) || {};
+        userSettings.set(userId, { ...existingSession, network: userNetworkChoice });
+
+        // Create RPC connection after network selection
+        await getRpcClient(userId, userNetworkChoice);
+        
+        await promptWalletOptions(channel, userId, userNetworkChoice);
     } catch (error) {
-        console.error(`[promptNetworkSelection] Failed to send network selection to user: ${userId}`, error);
-        return;
+        console.error(`[promptNetworkSelection] Error in network selection for user: ${userId}`, error);
+        channel.send('Network selection timed out. Please try the !wallet command again.');
     }
-
-    const filter = (interaction: MessageComponentInteraction) =>
-        ['Mainnet', 'Testnet-10', 'Testnet-11'].includes(interaction.customId) &&
-        interaction.user.id === userId;
-
-    const collector = channel.createMessageComponentCollector({ filter, componentType: ComponentType.Button, time: 60000 });
-
-    let hasReplied = false;
-
-    collector.on('collect', async (interaction: MessageComponentInteraction) => {
-        if (hasReplied) return;
-        hasReplied = true;
-
-        const network = interaction.customId === 'Mainnet' ? 'Mainnet' : 'Testnet';
-        console.log(`[promptNetworkSelection] User ${userId} selected network: ${network}`);
-
-        userSettings.set(userId, { network, privateKey: '', address: '' });
-
-        try {
-            await interaction.deferReply();
-            await interaction.followUp(`You have selected the ${network} network.`);
-            console.log(`[promptNetworkSelection] Confirmation sent for network: ${network}`);
-        } catch (error) {
-            console.error(`[promptNetworkSelection] Failed to send confirmation for network: ${network}`, error);
-            return;
-        }
-
-        console.log(`[promptNetworkSelection] Current network stored for user ${userId}: ${userSettings.get(userId)?.network}`);
-
-        await sendWalletOptions(channel, userId, network);
-    });
-
-    collector.on('end', () => {
-        console.log(`[promptNetworkSelection] Network selection ended for user: ${userId}`);
-        hasReplied = false;
-    });
 };
 
-const sendWalletOptions = async (channel: DMChannel, userId: string, network: string) => {
-    console.log(`[sendWalletOptions] Presenting wallet options to user: ${userId}`);
+const promptWalletOptions = async (channel: DMChannel | TextBasedChannel, userId: string, userNetworkChoice: Network) => {
+    console.log(`[promptWalletOptions] Prompting wallet options for user: ${userId} on network: ${userNetworkChoice}`);
+
     const row = new ActionRowBuilder<ButtonBuilder>()
         .addComponents(
             new ButtonBuilder()
-                .setCustomId('create_wallet')
-                .setLabel('Create Wallet')
+                .setCustomId('create')
+                .setLabel('Create New Wallet')
                 .setStyle(ButtonStyle.Primary),
             new ButtonBuilder()
-                .setCustomId('import_wallet')
-                .setLabel('Import Wallet')
+                .setCustomId('import')
+                .setLabel('Import Existing Wallet')
                 .setStyle(ButtonStyle.Secondary)
         );
 
+    const message = await channel.send({
+        content: 'Would you like to create a new wallet or import an existing one?',
+        components: [row],
+    });
+
+    const filter = (i: MessageComponentInteraction) => 
+        ['create', 'import'].includes(i.customId) && i.user.id === userId;
+
     try {
-        await channel.send({
-            content: 'I can create a new wallet for you, or you can import the private key of an existing wallet. What would you like to do?',
-            components: [row],
-        });
-        console.log(`[sendWalletOptions] Wallet options message sent to user: ${userId}`);
-    } catch (error) {
-        console.error(`[sendWalletOptions] Failed to send wallet options message to user: ${userId}`, error);
-        return;
-    }
+        const interaction = await message.awaitMessageComponent({ filter, time: 60000 });
+        
+        // Immediately acknowledge the interaction
+        await interaction.deferUpdate();
 
-    const filter = (interaction: MessageComponentInteraction) =>
-        ['create_wallet', 'import_wallet'].includes(interaction.customId) &&
-        interaction.user.id === userId;
-
-    const collector = channel.createMessageComponentCollector({ filter, componentType: ComponentType.Button, time: 60000 });
-
-    collector.on('collect', async (interaction: MessageComponentInteraction) => {
-        try {
-            await interaction.deferReply();
-
-            console.log(`[sendWalletOptions] User ${userId} has chosen an option.`);
-            console.log(`[sendWalletOptions] Network passed to wallet function: ${network}`);
-
-            if (interaction.customId === 'create_wallet') {
-                console.log(`[sendWalletOptions] User ${userId} selected to create a new wallet`);
-                await interaction.followUp('Creating a new wallet...');
-                const walletInfo = await generateNewWallet(userId, network);
-                userSettings.set(userId, { ...userSettings.get(userId), privateKey: walletInfo.privateKey, address: walletInfo.address });
-                interaction.followUp(`Your new wallet has been created!\nAddress: ${walletInfo.address}\nMnemonic: ${walletInfo.mnemonic}`);
-            } else if (interaction.customId === 'import_wallet') {
-                console.log(`[sendWalletOptions] User ${userId} selected to import a wallet`);
-                await interaction.followUp('Please provide your private key to import the wallet:');
-
-                const privateKeyFilter = (response: Message) => response.author.id === userId;
-                const privateKeyCollector = channel.createMessageCollector({ filter: privateKeyFilter, time: 60000 });
-
-                privateKeyCollector.on('collect', async (response: Message) => {
-                    const privateKey = response.content.trim();
-                    try {
-                        const walletInfo = await importWalletFromPrivateKey(privateKey, userId, network);
-                        userSettings.set(userId, { ...userSettings.get(userId), privateKey: walletInfo.privateKey, address: walletInfo.address });
-                        response.reply(`Wallet imported successfully!\nAddress: ${walletInfo.address}`);
-                    } catch (error) {
-                        console.error(`[sendWalletOptions] Failed to import wallet for user: ${userId}`, error);
-                        response.reply('Failed to import wallet. Please check the private key and try again.');
-                    }
-                    privateKeyCollector.stop();
-                });
-            }
-
-            await promptWalletActions(channel, userId);
-        } catch (error) {
-            console.error(`[sendWalletOptions] Failed to process wallet options for user: ${userId}`, error);
+        if (interaction.customId === 'create') {
+            await createWallet(channel, userId, userNetworkChoice);
+        } else {
+            await importWallet(channel, userId, userNetworkChoice);
         }
-    });
 
-    collector.on('end', () => {
-        console.log(`[sendWalletOptions] Wallet options interaction ended for user: ${userId}`);
-    });
+        // Remove the buttons after processing
+        await message.edit({ components: [] });
+    } catch (error) {
+        console.error(`[promptWalletOptions] Error in wallet option selection for user: ${userId}`, error);
+        channel.send('Wallet option selection timed out. Please try the !wallet command again.');
+    }
 };
 
-const promptWalletActions = async (channel: DMChannel, userId: string) => {
-    console.log(`[promptWalletActions] Prompting user ${userId} for further wallet actions.`);
+const createWallet = async (channel: DMChannel | TextBasedChannel, userId: string, userNetworkChoice: Network) => {
+    console.log(`[createWallet] Creating wallet for user: ${userId} on network: ${userNetworkChoice}`);
+    try {
+        const walletInfo = await generateNewWallet(userId, userNetworkChoice);
+        const mnemonicPhrase = JSON.parse(walletInfo.mnemonic).phrase;
+        const message = `Your new wallet has been created!\nAddress: ${walletInfo.address}\nPrivate Key: ${walletInfo.privateKey}\nMnemonic: ${mnemonicPhrase}\n\nPlease store your mnemonic safely. It will not be shown again.`;
+        await channel.send(message);
+        await promptWalletActions(channel, userId);
+    } catch (error) {
+        console.error(`[createWallet] Error creating wallet for user: ${userId}`, error);
+        channel.send('Failed to create wallet. Please try again later.');
+    }
+};
+
+const importWallet = async (channel: DMChannel | TextBasedChannel, userId: string, userNetworkChoice: Network) => {
+    console.log(`[importWallet] Importing wallet for user: ${userId} on network: ${userNetworkChoice}`);
+    await channel.send('Please enter your private key:');
+
+    try {
+        const privateKeyMessage = await channel.awaitMessages({ 
+            filter: (m) => m.author.id === userId,
+            max: 1,
+            time: 60000,
+            errors: ['time']
+        });
+
+        const privateKey = privateKeyMessage.first()?.content;
+        if (!privateKey) throw new Error('No private key provided');
+
+        const walletInfo = await importWalletFromPrivateKey(privateKey, userId, userNetworkChoice);
+        await channel.send(`Wallet imported successfully!\nAddress: ${walletInfo.address}`);
+        await promptWalletActions(channel, userId);
+    } catch (error) {
+        console.error(`[importWallet] Error importing wallet for user: ${userId}`, error);
+        channel.send('Failed to import wallet. Please make sure you entered a valid private key and try again.');
+    }
+};
+
+const promptWalletActions = async (channel: DMChannel | TextBasedChannel, userId: string) => {
+    console.log(`[promptWalletActions] Prompting wallet actions for user: ${userId}`);
+
     const row = new ActionRowBuilder<ButtonBuilder>()
         .addComponents(
             new ButtonBuilder()
-                .setCustomId('send_kaspa')
+                .setCustomId('send')
                 .setLabel('Send Kaspa')
                 .setStyle(ButtonStyle.Primary),
             new ButtonBuilder()
-                .setCustomId('view_balance')
-                .setLabel('View Balance')
+                .setCustomId('balance')
+                .setLabel('Check Balance')
                 .setStyle(ButtonStyle.Secondary)
         );
 
+    await channel.send({
+        content: 'What would you like to do?',
+        components: [row],
+    });
+
+    const filter = (i: MessageComponentInteraction) => 
+        ['send', 'balance'].includes(i.customId) && i.user.id === userId;
+
     try {
-        await channel.send({
-            content: 'What would you like to do next?',
-            components: [row],
-        });
-        console.log(`[promptWalletActions] Wallet actions prompt sent to user: ${userId}`);
+        const interaction = await channel.awaitMessageComponent({ filter, time: 60000 });
+        if (interaction.customId === 'send') {
+            await sendKaspaPrompt(channel, userId);
+        } else {
+            await checkBalance(interaction, userId);
+        }
     } catch (error) {
-        console.error(`[promptWalletActions] Failed to send wallet actions prompt to user: ${userId}`, error);
-        return;
+        console.error(`[promptWalletActions] Error in wallet action selection for user: ${userId}`, error);
+        channel.send('Wallet action selection timed out. Please try the !wallet command again.');
+    }
+};
+
+const sendKaspaPrompt = async (channel: DMChannel | TextBasedChannel, userId: string) => {
+    console.log(`[sendKaspaPrompt] Prompting to send Kaspa for user: ${userId}`);
+    await channel.send('Please enter the amount of Kaspa to send and the destination address in this format: "amount address"');
+
+    try {
+        const sendInfoMessage = await channel.awaitMessages({ 
+            filter: (m) => m.author.id === userId,
+            max: 1,
+            time: 60000,
+            errors: ['time']
+        });
+
+        const sendInfo = sendInfoMessage.first()?.content.split(' ');
+        if (!sendInfo || sendInfo.length !== 2) throw new Error('Invalid send information');
+
+        const amount = BigInt(parseFloat(sendInfo[0]) * 100000000); // Convert Kaspa to Sompi
+        const destinationAddress = sendInfo[1];
+
+        const userSession = userSettings.get(userId);
+        if (!userSession) {
+            throw new Error('User wallet not found');
+        }
+
+        const txId = await sendKaspa(userId, amount, destinationAddress, userSession.network);
+        await channel.send(`Transaction sent successfully! Transaction ID: ${txId}`);
+    } catch (error) {
+        console.error(`[sendKaspaPrompt] Error sending Kaspa for user: ${userId}`, error);
+        await channel.send('Failed to send Kaspa. Please check your input and try again.');
     }
 
-    const filter = (interaction: MessageComponentInteraction) =>
-        ['send_kaspa', 'view_balance'].includes(interaction.customId) &&
-        interaction.user.id === userId;
+    await promptWalletActions(channel, userId);
+};
 
-    const collector = channel.createMessageComponentCollector({ filter, componentType: ComponentType.Button, time: 60000 });
-
-    collector.on('collect', async (interaction: MessageComponentInteraction) => {
-        try {
-            await interaction.deferReply();
-
-            if (interaction.customId === 'send_kaspa') {
-                console.log(`[promptWalletActions] User ${userId} selected to send Kaspa`);
-                await interaction.followUp('Please provide the destination address and amount to send:');
-                // Implement further steps to collect address and amount, then call sendKaspa()
-            } else if (interaction.customId === 'view_balance') {
-                console.log(`[promptWalletActions] User ${userId} selected to view balance`);
-                // Implement view balance functionality
-            }
-        } catch (error) {
-            console.error(`[promptWalletActions] Failed to process wallet actions for user: ${userId}`, error);
+const checkBalance = async (interaction: MessageComponentInteraction, userId: string) => {
+    console.log(`[checkBalance] Checking balance for user: ${userId}`);
+    try {
+        const userSession = userSettings.get(userId);
+        if (!userSession || !userSession.address) {
+            console.log(`[checkBalance] Wallet not found for user: ${userId}`);
+            await interaction.update({ content: 'Wallet not found. Please create a wallet first.', components: [] });
+            return;
         }
-    });
 
-    collector.on('end', () => {
-        console.log(`[promptWalletActions] Wallet actions interaction ended for user: ${userId}`);
-    });
+        console.log(`[checkBalance] Fetching Kaspa balance for user: ${userId}`);
+        const kaspaBalance = await getBalance(userId, userSession.network);
+        console.log(`[checkBalance] Kaspa balance fetched for user: ${userId}: ${kaspaBalance}`);
+
+        console.log(`[checkBalance] Fetching KRC20 balances for user: ${userId}`);
+        const krc20Balances = await getKRC20Balances(userSession.address, userSession.network);
+        console.log(`[checkBalance] KRC20 balances fetched for user: ${userId}: ${JSON.stringify(krc20Balances)}`);
+
+        const combinedBalances = [`Kaspa: ${kaspaBalance}`].concat(krc20Balances);
+
+        const balanceMessage = `${userSession.address} Balances:\n${combinedBalances.join('\n')}`;
+        console.log(`[checkBalance] Sending balance message to user: ${userId}`);
+
+        await interaction.update({ content: balanceMessage, components: [] });
+
+        console.log(`[checkBalance] Balance message sent to user: ${userId}`);
+
+        setTimeout(() => promptWalletActions(interaction.channel as DMChannel, userId), 2000);
+    } catch (error) {
+        console.error(`[checkBalance] Error checking balance for user: ${userId}`, error);
+        await interaction.update({ 
+            content: 'An error occurred while fetching your balances. Please try again later.', 
+            components: [] 
+        });
+        setTimeout(() => promptWalletActions(interaction.channel as DMChannel, userId), 2000);
+    }
+};
+
+const getKRC20Balances = async (address: string, network: Network): Promise<string[]> => {
+    console.log(`[getKRC20Balances] Fetching KRC20 balances for address: ${address} on network: ${network}`);
+    const apiBaseUrl = getApiBaseUrl(network);
+    console.log(`[getKRC20Balances] Using API base URL: ${apiBaseUrl}`);
+
+    try {
+        const url = `${apiBaseUrl}/address/${address}/tokenlist`;
+        console.log(`[getKRC20Balances] Sending request to: ${url}`);
+
+        const response = await axios.get(url);
+        console.log(`[getKRC20Balances] Response received for address: ${address}`);
+
+        const holderData = response.data;
+        console.log(`[getKRC20Balances] Holder data: ${JSON.stringify(holderData)}`);
+
+        const balances = holderData.result.map((token: { tick: string; balance: string }) => 
+            `${token.tick.toUpperCase()}: ${token.balance} ${token.tick.toUpperCase()}`
+        );
+
+        console.log(`[getKRC20Balances] Processed balances: ${JSON.stringify(balances)}`);
+        return balances;
+    } catch (error) {
+        console.error(`[getKRC20Balances] Failed to fetch KRC20 token balances for address: ${address}`, error);
+        return ['Failed to fetch KRC20 token balances'];
+    }
+};
+
+const getApiBaseUrl = (network: Network): string => {
+    console.log(`[getApiBaseUrl] Getting API base URL for network: ${network}`);
+    let baseUrl: string;
+    switch (network) {
+        case 'Mainnet':
+            baseUrl = process.env.MAINNET_API_BASE_URL || '';
+            break;
+        case 'Testnet-10':
+            baseUrl = process.env.TESTNET_10_API_BASE_URL || '';
+            break;
+        case 'Testnet-11':
+            baseUrl = process.env.TESTNET_11_API_BASE_URL || '';
+            break;
+        default:
+            throw new Error('Invalid network');
+    }
+    console.log(`[getApiBaseUrl] API base URL for ${network}: ${baseUrl}`);
+    return baseUrl;
 };

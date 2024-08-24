@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "module": "esnext",                          // Use ESNext module syntax
+    "module": "ES2020",                          // Use ESNext module syntax
     "target": "es2020",                          // Set the target ECMAScript version
     "outDir": "./dist",                          // Output compiled files to the dist directory
     "rootDir": "./src",                          // Source files are in the src directory
