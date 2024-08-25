@@ -6,6 +6,7 @@ import { handleHelpCommand } from './commands/help.js';
 import { handleHolderCommand } from './commands/holder.js';
 import { handleDonateCommand } from './commands/donate.js';
 import { handleWalletCommand } from './commands/wallet.js';
+import { handleError } from './utils/errorHandler.js';
 import express from 'express';
 const app = express();
 const port = process.env.PORT || 8080;
@@ -65,13 +66,7 @@ client.on('messageCreate', async (message) => {
         }
     }
     catch (error) {
-        console.error('Error handling command:', error);
-        try {
-            await message.reply('An error occurred while processing your command. Please try again later.');
-        }
-        catch (replyError) {
-            console.error('Error sending error reply:', replyError);
-        }
+        await handleError(error, message.channel, 'messageCreate');
     }
 });
 client.login(process.env.DISCORD_TOKEN);

@@ -1,68 +1,67 @@
 import { UtxoProcessor, UtxoContext, createTransactions, PrivateKey, Address } from "../../wasm/kaspa/kaspa";
 import { getRpcClient } from './rpcConnection';
 import { userSettings, Network, UserSession } from './userSettings';
+import { retryableRequest, handleNetworkError } from './networkUtils';
+import { Logger } from './logger';
+import { AppError } from './errorHandler';
 
 export const sendKaspa = async (userId: string, amount: bigint, destinationAddress: string, network: Network) => {
     const userSession = userSettings.get(userId);
     if (!userSession || !userSession.address || !userSession.privateKey) {
-        throw new Error('User wallet not found or incomplete wallet information');
+        throw new AppError('User Not Found', 'User wallet not found or incomplete wallet information', 'USER_NOT_FOUND');
     }
 
-    // Type guard to ensure address is a string
     if (typeof userSession.address !== 'string' || typeof userSession.privateKey !== 'string') {
-        throw new Error('Invalid address or private key format');
+        throw new AppError('Invalid Wallet Data', 'Invalid address or private key format', 'INVALID_WALLET_DATA');
     }
-
-    const rpc = await getRpcClient(userId, network);
-    const processor = new UtxoProcessor({ rpc, networkId: network });
-    const context = new UtxoContext({ processor });
 
     try {
-        // Initialize the UtxoProcessor
-        await new Promise<void>((resolve) => {
-            const listener = async () => {
-                console.log(`[sendKaspa] UtxoProcessor initialized for user: ${userId}`);
-                await context.trackAddresses([userSession.address as string]);
-                processor.removeEventListener('utxo-proc-start', listener);
-                resolve();
-            };
-            processor.addEventListener('utxo-proc-start', listener);
-            processor.start();
-        });
+        return await retryableRequest(async () => {
+            const rpc = await getRpcClient(userId, network);
+            const processor = new UtxoProcessor({ rpc, networkId: network });
+            const context = new UtxoContext({ processor });
 
-        const userAddress = new Address(userSession.address as string);
+            await new Promise<void>((resolve) => {
+                const listener = async () => {
+                    Logger.info(`UtxoProcessor initialized for user: ${userId}`);
+                    await context.trackAddresses([userSession.address as string]);
+                    processor.removeEventListener('utxo-proc-start', listener);
+                    resolve();
+                };
+                processor.addEventListener('utxo-proc-start', listener);
+                processor.start();
+            });
 
-        const { transactions, summary } = await createTransactions({
-            entries: context,
-            outputs: [{ address: new Address(destinationAddress), amount }],
-            changeAddress: userAddress,
-            priorityFee: 0n
-        });
+            const userAddress = new Address(userSession.address as string);
 
-        if (transactions.length === 0) {
-            throw new Error('No transaction created');
-        }
+            const { transactions, summary } = await createTransactions({
+                entries: context,
+                outputs: [{ address: new Address(destinationAddress), amount }],
+                changeAddress: userAddress,
+                priorityFee: 0n
+            });
 
-        const privateKey = new PrivateKey(userSession.privateKey as string);
+            if (transactions.length === 0) {
+                throw new AppError('No Transaction Created', 'No transaction created', 'NO_TRANSACTION_CREATED');
+            }
 
-        for (const transaction of transactions) {
-            console.log(`[sendKaspa] Signing and submitting transaction: ${transaction.id}`);
-            await transaction.sign([privateKey]);
-            await transaction.submit(rpc);
-            emitTransactionEvent(userId, transaction.id);
-        }
+            const privateKey = new PrivateKey(userSession.privateKey as string);
 
-        console.log(`[sendKaspa] All transactions sent successfully. Final ID: ${summary.finalTransactionId}`);
-        return summary.finalTransactionId;
+            for (const transaction of transactions) {
+                Logger.info(`Signing and submitting transaction: ${transaction.id}`);
+                await transaction.sign([privateKey]);
+                await transaction.submit(rpc);
+                emitTransactionEvent(userId, transaction.id);
+            }
+
+            Logger.info(`All transactions sent successfully. Final ID: ${summary.finalTransactionId}`);
+            return summary.finalTransactionId;
+        }, 'Error sending Kaspa');
     } catch (error) {
-        console.error('[sendKaspa] Error:', error);
-        throw error;
-    } finally {
-        processor.stop();
+        throw handleNetworkError(error, 'sending Kaspa');
     }
 };
 
-// Custom event system
 type TransactionEventListener = (userId: string, txId: string) => void;
 const transactionEventListeners: TransactionEventListener[] = [];
 
