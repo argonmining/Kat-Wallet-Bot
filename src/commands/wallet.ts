@@ -1,4 +1,4 @@
-import { Message, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, DMChannel, MessageComponentInteraction, ChannelType, TextBasedChannel } from 'discord.js';
+import { Message, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, DMChannel, MessageComponentInteraction, ChannelType, TextBasedChannel, MessageCollector } from 'discord.js';
 import { generateNewWallet } from '../utils/generateNewWallet';
 import { importWalletFromPrivateKey } from '../utils/importWallet';
 import { sendKaspa } from '../utils/sendKaspa';
@@ -29,6 +29,7 @@ enum WalletState {
 }
 
 const userWalletStates = new Map<string, WalletState>();
+let lastWalletActionsMessage: Message | null = null;
 
 export const handleWalletCommand = async (message: Message) => {
     const userId = message.author.id;
@@ -68,7 +69,42 @@ export const handleWalletCommand = async (message: Message) => {
                 }
                 break;
             case WalletState.WALLET_ACTIONS:
-                await promptWalletActions(channel, userId);
+                try {
+                    const interaction = await message.awaitMessageComponent({
+                        filter: i => i.user.id === userId,
+                        time: 300000
+                    });
+
+                    await interaction.deferUpdate();
+
+                    switch (interaction.customId) {
+                        case 'send_kaspa':
+                            await sendKaspaPrompt(channel, userId);
+                            break;
+                        case 'check_balance':
+                            await checkBalance(channel, userId);
+                            break;
+                        case 'transaction_history':
+                            await showTransactionHistory(channel, userId);
+                            break;
+                        case 'help':
+                            await showHelpMessage(channel, userId);
+                            break;
+                        case 'clear_chat':
+                            await clearChatHistory(channel, userId);
+                            break;
+                        case 'back':
+                            userWalletStates.set(userId, WalletState.NETWORK_SELECTION);
+                            await promptNetworkSelection(channel, userId);
+                            return;
+                        case 'end_session':
+                            await endSession(channel, userId);
+                            return; // Exit the function without calling promptWalletActions again
+                    }
+                } catch (error) {
+                    Logger.error(`Interaction failed for user ${userId}: ${error}`);
+                    await channel.send('The interaction failed or timed out. Please try again.');
+                }
                 break;
             default:
                 Logger.warn(`Unexpected state for user ${userId}: ${currentState}`);
@@ -248,72 +284,90 @@ const importExistingWallet = async (channel: DMChannel | TextBasedChannel, userI
 
 const promptWalletActions = async (channel: DMChannel | TextBasedChannel, userId: string) => {
     Logger.info(`Prompting wallet actions for user: ${userId}`);
-    try {
-        if (!checkRateLimit(userId, 'walletActions')) {
-            const remainingTime = getRateLimitRemainingTime(userId, 'walletActions');
-            throw new AppError(
-                'Rate limit exceeded',
-                `You're performing wallet actions too frequently. Please try again in ${Math.ceil(remainingTime / 1000)} seconds.`,
-                'RATE_LIMIT_EXCEEDED'
-            );
+    userWalletStates.set(userId, WalletState.WALLET_ACTIONS);
+
+    // Delete the previous Wallet Actions message if it exists
+    if (lastWalletActionsMessage) {
+        try {
+            await lastWalletActionsMessage.delete();
+        } catch (error) {
+            Logger.warn(`Failed to delete previous Wallet Actions message: ${error}`);
         }
-
-        const embed = new EmbedBuilder()
-            .setColor(0x0099ff)
-            .setTitle('Wallet Actions')
-            .setDescription('What would you like to do?');
-
-        const row1 = new ActionRowBuilder<ButtonBuilder>()
-            .addComponents(
-                createButton('send', 'Send Kaspa', ButtonStyle.Primary),
-                createButton('balance', 'Check Balance', ButtonStyle.Secondary),
-                createButton('history', 'Transaction History', ButtonStyle.Secondary)
-            );
-
-        const row2 = new ActionRowBuilder<ButtonBuilder>()
-            .addComponents(
-                createButton('help', 'Help', ButtonStyle.Secondary),
-                createButton('clear', 'Clear Chat', ButtonStyle.Danger),
-                createButton('back', 'Back', ButtonStyle.Secondary)
-            );
-
-        const message = await channel.send({ embeds: [embed], components: [row1, row2] });
-
-        const filter = (i: MessageComponentInteraction) => 
-            ['send', 'balance', 'history', 'help', 'clear', 'back'].includes(i.customId) && i.user.id === userId;
-
-        const interaction = await message.awaitMessageComponent({ filter, time: 300000 });
-        await interaction.deferUpdate();
-
-        switch (interaction.customId) {
-            case 'send':
-                await sendKaspaPrompt(channel, userId);
-                break;
-            case 'balance':
-                await checkBalance(channel, userId);
-                break;
-            case 'history':
-                await showTransactionHistory(channel, userId);
-                break;
-            case 'help':
-                await showHelpMessage(channel, userId);
-                break;
-            case 'clear':
-                await clearChatHistory(channel, userId);
-                break;
-            case 'back':
-                userWalletStates.set(userId, WalletState.NETWORK_SELECTION);
-                await promptNetworkSelection(channel, userId);
-                return;
-        }
-
-        // Always prompt for wallet actions again after an action is completed
-        await promptWalletActions(channel, userId);
-    } catch (error) {
-        await handleError(error, channel, 'promptWalletActions');
-        userWalletStates.set(userId, WalletState.WALLET_ACTIONS);
-        await promptWalletActions(channel, userId);
     }
+
+    const row1 = new ActionRowBuilder<ButtonBuilder>()
+        .addComponents(
+            createButton('send_kaspa', 'Send Kaspa', ButtonStyle.Primary),
+            createButton('check_balance', 'Check Balance', ButtonStyle.Primary),
+            createButton('transaction_history', 'Transaction History', ButtonStyle.Primary)
+        );
+
+    const row2 = new ActionRowBuilder<ButtonBuilder>()
+        .addComponents(
+            createButton('help', 'Help', ButtonStyle.Secondary),
+            createButton('clear_chat', 'Clear Chat', ButtonStyle.Danger),
+            createButton('back', 'Back', ButtonStyle.Secondary),
+            createButton('end_session', 'End Session', ButtonStyle.Danger)
+        );
+
+    const embed = new EmbedBuilder()
+        .setColor(0x0099FF)
+        .setTitle('Wallet Actions')
+        .setDescription('What would you like to do?');
+
+    const message = await channel.send({ embeds: [embed], components: [row1, row2] });
+    lastWalletActionsMessage = message;
+
+    const collector = message.createMessageComponentCollector({
+        filter: i => i.user.id === userId,
+        time: 300000
+    });
+
+    collector.on('collect', async (interaction) => {
+        try {
+            await interaction.deferUpdate();
+
+            switch (interaction.customId) {
+                case 'send_kaspa':
+                    await sendKaspaPrompt(channel, userId);
+                    break;
+                case 'check_balance':
+                    await checkBalance(channel, userId);
+                    break;
+                case 'transaction_history':
+                    await showTransactionHistory(channel, userId);
+                    break;
+                case 'help':
+                    await showHelpMessage(channel, userId);
+                    break;
+                case 'clear_chat':
+                    await clearChatHistory(channel, userId);
+                    break;
+                case 'back':
+                    userWalletStates.set(userId, WalletState.NETWORK_SELECTION);
+                    await promptNetworkSelection(channel, userId);
+                    collector.stop();
+                    return;
+                case 'end_session':
+                    await endSession(channel, userId);
+                    collector.stop();
+                    return;
+            }
+
+            // Prompt wallet actions again after each action
+            await promptWalletActions(channel, userId);
+        } catch (error) {
+            Logger.error(`Error handling interaction for user ${userId}: ${error}`);
+            await channel.send('An error occurred while processing your request. Please try again.');
+        }
+    });
+
+    collector.on('end', async (collected, reason) => {
+        if (reason === 'time') {
+            await channel.send('The wallet session has timed out due to inactivity. Please use the !wallet command to start a new session.');
+            userWalletStates.delete(userId);
+        }
+    });
 };
 
 const sendKaspaPrompt = async (channel: DMChannel | TextBasedChannel, userId: string) => {
@@ -382,6 +436,9 @@ const sendKaspaPrompt = async (channel: DMChannel | TextBasedChannel, userId: st
 
             await confirmation.deferUpdate();
 
+            // Delete the confirmation message
+            await confirmMessage.delete().catch(error => Logger.error(`Failed to delete confirmation message: ${error}`));
+
             if (confirmation.customId === 'confirm_send') {
                 // Perform the transaction
                 const txId = await sendKaspa(userId, BigInt(parseFloat(amount) * 1e8), recipientAddress, network);
@@ -415,7 +472,6 @@ const sendKaspaPrompt = async (channel: DMChannel | TextBasedChannel, userId: st
     } finally {
         // Reset the state to WALLET_ACTIONS
         userWalletStates.set(userId, WalletState.WALLET_ACTIONS);
-        await promptWalletActions(channel, userId);
     }
 };
 
@@ -569,5 +625,25 @@ const getTransactionHistory = async (address: string, network: Network): Promise
         );
     } catch (error) {
         throw handleNetworkError(error, 'fetching transaction history');
+    }
+};
+
+const endSession = async (channel: DMChannel | TextBasedChannel, userId: string) => {
+    Logger.info(`Ending session for user: ${userId}`);
+
+    try {
+        // Clear the chat
+        await clearChatHistory(channel, userId);
+
+        // Send the end session message
+        await channel.send("Your session has now ended and all private information has been erased. Thank you for using Kat Wallet Bot by Nacho!");
+
+        // Clear user session data
+        userSettings.delete(userId);
+        userWalletStates.delete(userId);
+
+        Logger.info(`Session ended for user: ${userId}`);
+    } catch (error) {
+        await handleError(error, channel, 'endSession');
     }
 };
