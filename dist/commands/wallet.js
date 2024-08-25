@@ -11,7 +11,6 @@ import { Logger } from '../utils/logger.js';
 import { handleError, AppError } from '../utils/errorHandler.js';
 import { checkRateLimit, getRateLimitRemainingTime } from '../utils/rateLimit.js';
 import { validateAddress, validateAmount, sanitizeInput, validatePrivateKey, validateNetwork } from '../utils/inputValidation.js';
-import { retryableRequest, handleNetworkError } from '../utils/networkUtils.js';
 const { debounce } = lodash;
 var WalletState;
 (function (WalletState) {
@@ -176,12 +175,21 @@ const createNewWallet = async (channel, userId, network) => {
     try {
         // Perform wallet creation without sending any messages
         const walletInfo = await generateNewWallet(userId, network);
+        // Parse the mnemonic object to extract the phrase
+        const mnemonicObject = JSON.parse(walletInfo.mnemonic);
+        const seedPhrase = mnemonicObject.phrase;
         // Only after successful creation, send confirmation messages
         await channel.send('Your new wallet has been created. Please store this information securely:');
         await channel.send(`Address: ${walletInfo.address}`);
         await channel.send(`Private Key: ${walletInfo.privateKey}`);
-        await channel.send(`Mnemonic: ${walletInfo.mnemonic}`);
-        await channel.send('⚠️ WARNING: Never share your private key or mnemonic with anyone!');
+        await channel.send(`Seed Phrase: ${seedPhrase}`);
+        await channel.send(`
+⚠️ WARNINGS: 
+- Kat Wallet Bot does not store your private key or seed phrase! 
+- Securely store either your private key or seed phrase, or both!
+- Never share your private key or seed phrase with anyone!
+
+For security, once you have a backup, you can delete the messages above by clicking "Clear Chat" in the menu below.`);
         // Set the state to WALLET_ACTIONS
         userWalletStates.set(userId, WalletState.WALLET_ACTIONS);
         // Prompt for wallet actions
@@ -237,14 +245,16 @@ const promptWalletActions = async (channel, userId) => {
         }
     }
     const row1 = new ActionRowBuilder()
-        .addComponents(createButton('send_kaspa', 'Send Kaspa', ButtonStyle.Primary), createButton('check_balance', 'Check Balance', ButtonStyle.Primary), createButton('transaction_history', 'Transaction History', ButtonStyle.Primary));
+        .addComponents(createButton('check_balance', 'Check Balance', ButtonStyle.Primary), createButton('send_kaspa', 'Send Kaspa', ButtonStyle.Primary), createButton('receive_address', 'Receive Address', ButtonStyle.Primary), createButton('transaction_history', 'Transaction History', ButtonStyle.Primary));
     const row2 = new ActionRowBuilder()
-        .addComponents(createButton('help', 'Help', ButtonStyle.Secondary), createButton('clear_chat', 'Clear Chat', ButtonStyle.Danger), createButton('back', 'Back', ButtonStyle.Secondary), createButton('end_session', 'End Session', ButtonStyle.Danger));
+        .addComponents(createButton('token_info', 'Token Info', ButtonStyle.Secondary), createButton('send_token', 'Send Token', ButtonStyle.Secondary), createButton('mint_token', 'Mint Token', ButtonStyle.Secondary), createButton('deploy_token', 'Deploy Token', ButtonStyle.Secondary));
+    const row3 = new ActionRowBuilder()
+        .addComponents(createButton('go_back', 'Go Back', ButtonStyle.Secondary), createButton('help_menu', 'Help Menu', ButtonStyle.Secondary), createButton('clear_chat', 'Clear Chat', ButtonStyle.Danger), createButton('end_session', 'End Session', ButtonStyle.Danger));
     const embed = new EmbedBuilder()
         .setColor(0x0099FF)
         .setTitle('Wallet Actions')
         .setDescription('What would you like to do?');
-    const message = await channel.send({ embeds: [embed], components: [row1, row2] });
+    const message = await channel.send({ embeds: [embed], components: [row1, row2, row3] });
     lastWalletActionsMessage = message;
     const collector = message.createMessageComponentCollector({
         filter: i => i.user.id === userId,
@@ -254,26 +264,41 @@ const promptWalletActions = async (channel, userId) => {
         try {
             await interaction.deferUpdate();
             switch (interaction.customId) {
+                case 'check_balance':
+                    await checkBalance(channel, userId);
+                    break;
                 case 'send_kaspa':
                     await sendKaspaPrompt(channel, userId);
                     break;
-                case 'check_balance':
-                    await checkBalance(channel, userId);
+                case 'receive_address':
+                    await showReceiveAddress(channel, userId);
                     break;
                 case 'transaction_history':
                     await showTransactionHistory(channel, userId);
                     break;
-                case 'help':
+                case 'token_info':
+                    await showTokenInfo(channel, userId);
+                    break;
+                case 'send_token':
+                    await sendTokenPrompt(channel, userId);
+                    break;
+                case 'mint_token':
+                    await mintTokenPrompt(channel, userId);
+                    break;
+                case 'deploy_token':
+                    await deployTokenPrompt(channel, userId);
+                    break;
+                case 'go_back':
+                    userWalletStates.set(userId, WalletState.NETWORK_SELECTION);
+                    await promptNetworkSelection(channel, userId);
+                    collector.stop();
+                    return;
+                case 'help_menu':
                     await showHelpMessage(channel, userId);
                     break;
                 case 'clear_chat':
                     await clearChatHistory(channel, userId);
                     break;
-                case 'back':
-                    userWalletStates.set(userId, WalletState.NETWORK_SELECTION);
-                    await promptNetworkSelection(channel, userId);
-                    collector.stop();
-                    return;
                 case 'end_session':
                     await endSession(channel, userId);
                     collector.stop();
@@ -409,28 +434,34 @@ const checkBalance = async (channel, userId) => {
 const showTransactionHistory = async (channel, userId) => {
     Logger.info(`Showing transaction history for user: ${userId}`);
     try {
-        if (!checkRateLimit(userId, 'showTransactionHistory')) {
-            const remainingTime = getRateLimitRemainingTime(userId, 'showTransactionHistory');
-            throw new AppError('Rate limit exceeded', `You're viewing transaction history too frequently. Please try again in ${Math.ceil(remainingTime / 1000)} seconds.`, 'RATE_LIMIT_EXCEEDED');
-        }
         const userSession = userSettings.get(userId);
-        if (!userSession || !userSession.address || !validateAddress(userSession.address)) {
-            throw new AppError('Invalid wallet', 'Your wallet address is invalid. Please create a new wallet.', 'INVALID_WALLET');
+        if (!userSession || !userSession.address || !userSession.network) {
+            throw new AppError('Invalid wallet', 'Your wallet session is invalid. Please start over with the !wallet command.', 'INVALID_SESSION');
         }
-        const history = await getTransactionHistory(userSession.address, userSession.network);
-        const embed = new EmbedBuilder()
-            .setColor(0x0099ff)
-            .setTitle('Transaction History')
-            .setDescription(`Recent transactions for ${userSession.address}`)
-            .setFooter({ text: `Network: ${userSession.network}` });
-        history.slice(0, 5).forEach((tx, index) => {
-            embed.addFields({ name: `Transaction ${index + 1}`, value: `ID: ${tx.id}\nAmount: ${tx.amount} KAS\nType: ${tx.type}\nTimestamp: ${tx.timestamp}` });
-        });
-        await channel.send({ embeds: [embed] });
-        Logger.info(`Transaction history sent to user: ${userId}`);
+        const explorerUrl = getExplorerUrl(userSession.address, userSession.network);
+        await channel.send(`Built in transaction history is coming soon. For now, you can view your transaction history here: ${explorerUrl}`);
+        Logger.info(`Transaction history link sent to user: ${userId}`);
+        // Delete the old Wallet Actions prompt
+        if (lastWalletActionsMessage) {
+            await lastWalletActionsMessage.delete().catch(error => Logger.error(`Failed to delete old Wallet Actions message: ${error}`));
+        }
+        // Issue a new Wallet Actions prompt
+        await promptWalletActions(channel, userId);
     }
     catch (error) {
         await handleError(error, channel, 'showTransactionHistory');
+    }
+};
+const getExplorerUrl = (address, network) => {
+    switch (network) {
+        case 'Mainnet':
+            return `https://explorer.kaspa.org/addresses/${address}`;
+        case 'Testnet-10':
+            return `https://explorer-tn10.kaspa.org/addresses/${address}`;
+        case 'Testnet-11':
+            return `https://explorer-tn11.kaspa.org/addresses/${address}`;
+        default:
+            throw new AppError('Invalid Network', `Invalid network: ${network}`, 'INVALID_NETWORK');
     }
 };
 const showHelpMessage = async (channel, userId) => {
@@ -444,7 +475,7 @@ const showHelpMessage = async (channel, userId) => {
             .setColor(0x0099ff)
             .setTitle('Wallet Help')
             .setDescription('Here are the available wallet commands:')
-            .addFields({ name: 'Send Kaspa', value: 'Send Kaspa to another address' }, { name: 'Check Balance', value: 'View your current Kaspa and KRC20 token balances' }, { name: 'Transaction History', value: 'View your recent transactions' }, { name: 'Back', value: 'Return to the main wallet menu' })
+            .addFields({ name: 'Send Kaspa', value: 'Send Kaspa to another address' }, { name: 'Check Balance', value: 'View your current Kaspa and KRC20 token balances' }, { name: 'Transaction History', value: 'View your recent transactions' }, { name: 'Go Back', value: 'Return to the main wallet menu' })
             .setFooter({ text: 'For more help, visit our documentation or contact support.' });
         await channel.send({ embeds: [embed] });
         Logger.info(`Help message sent to user: ${userId}`);
@@ -477,23 +508,6 @@ const clearChatHistory = async (channel, userId) => {
         await handleError(error, channel, 'clearChatHistory');
     }
 };
-const getTransactionHistory = async (address, network) => {
-    Logger.info(`Fetching transaction history for address: ${address} on network: ${network}`);
-    try {
-        return await retryableRequest(async () => {
-            // TODO: Implement this function using the Kaspa WASM bindings
-            // This is a placeholder implementation
-            return [
-                { id: 'tx1', amount: '10', type: 'Received', timestamp: '2023-04-01 10:00:00' },
-                { id: 'tx2', amount: '5', type: 'Sent', timestamp: '2023-04-02 15:30:00' },
-                // Add more placeholder transactions as needed
-            ];
-        }, 'Error fetching transaction history');
-    }
-    catch (error) {
-        throw handleNetworkError(error, 'fetching transaction history');
-    }
-};
 const endSession = async (channel, userId) => {
     Logger.info(`Ending session for user: ${userId}`);
     try {
@@ -509,4 +523,34 @@ const endSession = async (channel, userId) => {
     catch (error) {
         await handleError(error, channel, 'endSession');
     }
+};
+const showReceiveAddress = async (channel, userId) => {
+    Logger.info(`Showing receive address for user: ${userId}`);
+    try {
+        const userSession = userSettings.get(userId);
+        if (!userSession || !userSession.address) {
+            throw new AppError('Invalid wallet', 'Your wallet is not set up correctly. Please create a new wallet.', 'INVALID_WALLET');
+        }
+        await channel.send(`Your receive address is: ${userSession.address}`);
+        Logger.info(`Receive address sent to user: ${userId}`);
+    }
+    catch (error) {
+        await handleError(error, channel, 'showReceiveAddress');
+    }
+};
+const showTokenInfo = async (channel, userId) => {
+    Logger.info(`Showing token info for user: ${userId}`);
+    await channel.send('Token info feature is coming soon!');
+};
+const sendTokenPrompt = async (channel, userId) => {
+    Logger.info(`Starting send token prompt for user: ${userId}`);
+    await channel.send('Send token feature is coming soon!');
+};
+const mintTokenPrompt = async (channel, userId) => {
+    Logger.info(`Starting mint token prompt for user: ${userId}`);
+    await channel.send('Mint token feature is coming soon!');
+};
+const deployTokenPrompt = async (channel, userId) => {
+    Logger.info(`Starting deploy token prompt for user: ${userId}`);
+    await channel.send('Deploy token feature is coming soon!');
 };
