@@ -6,6 +6,7 @@ export interface UserSession {
     network: Network;
     privateKey?: string;
     address?: string;
+    lastActivity: number;
 }
 
 class UserSettings {

@@ -29,38 +29,49 @@ client.on('messageCreate', async (message) => {
         console.log('[messageCreate] Message from bot, ignoring');
         return;
     }
-    // Handle DM messages
-    if (message.channel.type === ChannelType.DM) {
-        console.log(`[messageCreate] Processing DM from user: ${message.author.id}`);
-        await handleWalletCommand(message);
-        return;
-    }
-    // Parse command and arguments
-    const args = message.content.slice(1).trim().split(/ +/);
-    const command = args.shift()?.toLowerCase();
-    // Handle guild messages
-    switch (command) {
-        case 'wallet':
-            console.log(`[messageCreate] Processing !wallet command from user: ${message.author.id}`);
+    try {
+        // Handle DM messages
+        if (message.channel.type === ChannelType.DM) {
+            console.log(`[messageCreate] Processing DM from user: ${message.author.id}`);
             await handleWalletCommand(message);
-            break;
-        case 'status':
-            await handleStatusCommand(message, args);
-            break;
-        case 'links':
-            await handleLinksCommand(message);
-            break;
-        case 'help':
-            await handleHelpCommand(message);
-            break;
-        case 'holder':
-            await handleHolderCommand(message, args);
-            break;
-        case 'donate':
-            await handleDonateCommand(message);
-            break;
-        default:
-            console.log('[messageCreate] Message did not match any known commands');
+            return;
+        }
+        // Parse command and arguments
+        const args = message.content.slice(1).trim().split(/ +/);
+        const command = args.shift()?.toLowerCase();
+        // Handle guild messages
+        switch (command) {
+            case 'wallet':
+                console.log(`[messageCreate] Processing !wallet command from user: ${message.author.id}`);
+                await handleWalletCommand(message);
+                break;
+            case 'status':
+                await handleStatusCommand(message, args);
+                break;
+            case 'links':
+                await handleLinksCommand(message);
+                break;
+            case 'help':
+                await handleHelpCommand(message);
+                break;
+            case 'holder':
+                await handleHolderCommand(message, args);
+                break;
+            case 'donate':
+                await handleDonateCommand(message);
+                break;
+            default:
+                console.log('[messageCreate] Message did not match any known commands');
+        }
+    }
+    catch (error) {
+        console.error('Error handling command:', error);
+        try {
+            await message.reply('An error occurred while processing your command. Please try again later.');
+        }
+        catch (replyError) {
+            console.error('Error sending error reply:', replyError);
+        }
     }
 });
 client.login(process.env.DISCORD_TOKEN);

@@ -39,7 +39,8 @@ export async function generateNewWallet(userId: string, network: Network): Promi
         userSettings.set(userId, {
             network,
             privateKey: privateKey.toString(),
-            address: address.toString()
+            address: address.toString(),
+            lastActivity: Date.now()
         });
         console.log(`[generateNewWallet] User settings stored successfully`);
 

@@ -25,7 +25,8 @@ export async function importWalletFromPrivateKey(privateKeyString: string, userI
         userSettings.set(userId, {
             network,
             privateKey: privateKey.toString(),
-            address: address.toString()
+            address: address.toString(),
+            lastActivity: Date.now() // Added this line
         });
 
         return {

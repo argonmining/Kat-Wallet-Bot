@@ -1,4 +1,4 @@
-import { RpcClient, Encoding, Resolver } from "../../wasm/kaspa/kaspa";
+import { RpcClient, Encoding, Resolver, UtxoProcessor, UtxoContext } from "../../wasm/kaspa/kaspa";
 import { Network } from './userSettings';
 import dotenv from 'dotenv';
 
@@ -6,6 +6,8 @@ dotenv.config();
 
 const rpcClients: Map<string, RpcClient> = new Map();
 const rpcConnections: Map<string, boolean> = new Map();
+const utxoProcessors: Map<string, UtxoProcessor> = new Map();
+const utxoContexts: Map<string, UtxoContext> = new Map();
 
 const createRpcClient = (network: Network): RpcClient => {
     return new RpcClient({
@@ -90,4 +92,25 @@ export const disconnectRpc = async (userId: string, network: Network): Promise<v
         rpcConnections.set(clientKey, false);
         console.log(`RPC connection closed for ${clientKey}`);
     }
+};
+
+export const getUtxoProcessor = async (userId: string, network: Network): Promise<UtxoProcessor> => {
+    const clientKey = `${userId}-${network}`;
+    if (!utxoProcessors.has(clientKey)) {
+        const rpc = await getRpcClient(userId, network);
+        const processor = new UtxoProcessor({ rpc, networkId: getNetworkId(network) });
+        utxoProcessors.set(clientKey, processor);
+        processor.start();
+    }
+    return utxoProcessors.get(clientKey)!;
+};
+
+export const getUtxoContext = async (userId: string, network: Network): Promise<UtxoContext> => {
+    const clientKey = `${userId}-${network}`;
+    if (!utxoContexts.has(clientKey)) {
+        const processor = await getUtxoProcessor(userId, network);
+        const context = new UtxoContext({ processor });
+        utxoContexts.set(clientKey, context);
+    }
+    return utxoContexts.get(clientKey)!;
 };
