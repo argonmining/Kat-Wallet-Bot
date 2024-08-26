@@ -1,39 +1,40 @@
 import { Message } from 'discord.js';
-import axios from 'axios';
+import { getTokenInfo } from '../utils/tokenInfo';
+import { Network } from '../utils/userSettings';
+import { Logger } from '../utils/logger';
+import { handleError, AppError } from '../utils/errorHandler';
 
 export const handleStatusCommand = async (message: Message, args: string[]) => {
-  if (args.length !== 1) {
-    message.channel.send('Please provide a valid token ticker.');
-    return;
-  }
+	if (args.length !== 2) {
+		await message.reply('Please provide a valid token ticker and network. Usage: !status <TICKER> <NETWORK>');
+		return;
+	}
 
-  const token = args[0].toUpperCase();
+	const ticker = args[0].toUpperCase();
+	const networkInput = args[1].toLowerCase();
 
-  try {
-    const response = await axios.get(`${process.env.API_BASE_URL}/token/${token}?stat=true&holder=true`);
-    const tokenData = response.data.result[0];
+	let network: Network;
+	switch (networkInput) {
+		case 'tn10':
+			network = 'Testnet-10';
+			break;
+		case 'tn11':
+			network = 'Testnet-11';
+			break;
+		case 'mainnet':
+		case 'main':
+			network = 'Mainnet';
+			break;
+		default:
+			await message.reply('Invalid network. Please use TN10, TN11, or Mainnet.');
+			return;
+	}
 
-    const embed = {
-      color: 7391162,
-      title: `Mint Status for ${token}`,
-      fields: [
-        { name: 'Max Supply', value: tokenData.max, inline: true },
-        { name: 'Minted', value: tokenData.minted, inline: true },
-        { name: 'Holders', value: tokenData.holderTotal || 'N/A', inline: true }
-      ],
-      footer: { text: 'x.com/NachoWyborski' },
-      author: {
-        name: 'Nacho the 𐤊at',
-        icon_url: 'https://coinchimp-240602.nacho-react.pages.dev/nacho_bot_logo.png'
-      },
-      image: {
-        url: 'https://i.ibb.co/G0BvQCs/nachobot-banner1small.png'
-      }
-    };
-
-    message.channel.send({ embeds: [embed] });
-  } catch (error) {
-    console.error('Failed to fetch token data:', error);
-    message.channel.send('Failed to fetch token data. Please try again.');
-  }
+	try {
+		Logger.info(`Status command triggered for ticker: ${ticker} on network: ${network}`);
+		const tokenInfoEmbed = await getTokenInfo(ticker, network);
+		await message.reply({ embeds: [tokenInfoEmbed] });
+	} catch (error) {
+		await handleError(error, message.channel, 'handleStatusCommand');
+	}
 };

@@ -12,6 +12,7 @@ import { handleError, AppError } from '../utils/errorHandler.js';
 import { checkRateLimit, getRateLimitRemainingTime } from '../utils/rateLimit.js';
 import { validateAddress, validateAmount, sanitizeInput, validatePrivateKey, validateNetwork } from '../utils/inputValidation.js';
 import { mintToken } from '../utils/mintToken.js';
+import { getTokenInfo } from '../utils/tokenInfo.js';
 const { debounce } = lodash;
 var WalletState;
 (function (WalletState) {
@@ -77,6 +78,9 @@ export const handleWalletCommand = async (message) => {
                             break;
                         case 'transaction_history':
                             await showTransactionHistory(channel, userId);
+                            break;
+                        case 'token_info':
+                            await showTokenInfo(channel, userId);
                             break;
                         case 'help':
                             await showHelpMessage(channel, userId);
@@ -543,7 +547,36 @@ const showReceiveAddress = async (channel, userId) => {
 };
 const showTokenInfo = async (channel, userId) => {
     Logger.info(`Showing token info for user: ${userId}`);
-    await channel.send('Token info feature is coming soon!');
+    try {
+        const userSession = userSettings.get(userId);
+        if (!userSession || !userSession.network) {
+            throw new AppError('Invalid Session', 'Your wallet session is invalid. Please start over with the !wallet command.', 'INVALID_SESSION');
+        }
+        // Delete the old Wallet Actions prompt
+        if (lastWalletActionsMessage) {
+            await lastWalletActionsMessage.delete().catch(error => Logger.error(`Failed to delete old Wallet Actions message: ${error}`));
+        }
+        await channel.send('Please enter the ticker of the token you want to view information for:');
+        const tickerResponse = await channel.awaitMessages({
+            filter: (m) => m.author.id === userId,
+            max: 1,
+            time: 60000,
+            errors: ['time']
+        });
+        const ticker = tickerResponse.first()?.content.trim().toUpperCase();
+        if (!ticker) {
+            throw new AppError('Invalid Input', 'You must provide a valid ticker.', 'INVALID_INPUT');
+        }
+        const tokenInfoEmbed = await getTokenInfo(ticker, userSession.network);
+        await channel.send({ embeds: [tokenInfoEmbed] });
+    }
+    catch (error) {
+        await handleError(error, channel, 'showTokenInfo');
+    }
+    finally {
+        userWalletStates.set(userId, WalletState.WALLET_ACTIONS);
+        await promptWalletActions(channel, userId);
+    }
 };
 const sendTokenPrompt = async (channel, userId) => {
     Logger.info(`Starting send token prompt for user: ${userId}`);
