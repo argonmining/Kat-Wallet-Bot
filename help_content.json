@@ -1,25 +1,52 @@
 {
     "commands": [
       {
-        "name": "!tokeninfo [ticker]",
-        "description": "Displays the mint status for the given token."
+        "name": "!status [TICKER] [NETWORK]",
+        "description": "Displays detailed information about a specific KRC20 token.",
+        "usage": "!status TNACHO TN10",
+        "details": [
+          "TICKER: The token's ticker symbol (e.g., TNACHO, KAS)",
+          "NETWORK: TN10 (Testnet-10), TN11 (Testnet-11), or MAIN (Mainnet)",
+          "Provides information such as maximum supply, minted amount, circulation supply, and top holders."
+        ]
       },
       {
-        "name": "!tokenbalance [wallet-address]",
-        "description": "Displays the balance of krc20 projects held by this wallet address."
-      },      
+        "name": "!balance [WALLET_ADDRESS] [NETWORK]",
+        "description": "Shows the KRC20 token balances for a specific wallet address.",
+        "usage": "!balance kas:qr0qp6nfxvpqvzfgwvwrxjrwcvjzfgwvwrxjrwcvjzfgwvwrxjrwcvjzfgwv TN10",
+        "details": [
+          "WALLET_ADDRESS: A valid Kaspa wallet address",
+          "NETWORK: TN10 (Testnet-10), TN11 (Testnet-11), or MAIN (Mainnet)",
+          "Displays all KRC20 token balances associated with the provided address on the specified network."
+        ]
+      },
       {
         "name": "!links",
-        "description": "Displays the official links."
+        "description": "Provides a list of official links related to the project.",
+        "usage": "!links",
+        "details": [
+          "Displays links to official websites, social media, and other relevant resources.",
+          "No additional parameters required."
+        ]
       },
       {
         "name": "!donate",
-        "description": "Displays wallet info for donations."
-      },      
+        "description": "Shows information about how to donate to the project.",
+        "usage": "!donate",
+        "details": [
+          "Provides the official donation wallet address.",
+          "Includes a link to check the donation wallet's balance.",
+          "No additional parameters required."
+        ]
+      },
       {
-        "name": "!helpme",
-        "description": "Displays this help menu."
+        "name": "!help",
+        "description": "Displays this help menu with detailed information about available commands.",
+        "usage": "!help",
+        "details": [
+          "Shows a list of all available commands with their descriptions and usage instructions.",
+          "No additional parameters required."
+        ]
       }
     ]
   }
-  

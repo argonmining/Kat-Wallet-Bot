@@ -3,9 +3,9 @@ import dotenv from 'dotenv';
 import { handleStatusCommand } from './commands/status.js';
 import { handleLinksCommand } from './commands/links.js';
 import { handleHelpCommand } from './commands/help.js';
-import { handleHolderCommand } from './commands/holder.js';
 import { handleDonateCommand } from './commands/donate.js';
 import { handleWalletCommand } from './commands/wallet.js';
+import { handleBalanceCommand } from './commands/balance.js';
 import { handleError } from './utils/errorHandler';
 import express from 'express';
 
@@ -64,11 +64,11 @@ client.on('messageCreate', async (message: Message) => {
             case 'help':
                 await handleHelpCommand(message);
                 break;
-            case 'holder':
-                await handleHolderCommand(message, args);
-                break;
             case 'donate':
                 await handleDonateCommand(message);
+                break;
+            case 'balance':
+                await handleBalanceCommand(message, args);
                 break;
             default:
                 console.log('[messageCreate] Message did not match any known commands');

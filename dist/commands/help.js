@@ -1,18 +1,21 @@
+import { EmbedBuilder } from 'discord.js';
 import fs from 'fs';
-import { EmbedBuilder } from '@discordjs/builders';
+import path from 'path';
 export const handleHelpCommand = (message) => {
-    const templateContent = fs.readFileSync('message_template.json', 'utf8');
-    const helpContent = fs.readFileSync('help_content.json', 'utf8');
-    const template = JSON.parse(templateContent);
-    const helpJson = JSON.parse(helpContent);
+    const helpContentPath = path.join(process.cwd(), 'help_content.json');
+    const helpContent = JSON.parse(fs.readFileSync(helpContentPath, 'utf8'));
     const embed = new EmbedBuilder()
-        .setColor(template.color)
-        .setImage(template.background_images[0].url)
-        .setAuthor({ name: template.author.name, iconURL: template.author.icon_url })
-        .setFooter({ text: 'x.com/NachoWyborski' })
-        .setTitle('Help Menu');
-    helpJson.commands.forEach((command) => {
-        embed.addFields({ name: command.name, value: command.description });
+        .setColor(0x0099FF)
+        .setTitle('Nacho the 𐤊at Bot - Command Guide')
+        .setDescription('Here\'s a list of available commands and their usage:')
+        .setTimestamp();
+    helpContent.commands.forEach((command) => {
+        let fieldValue = `${command.description}\n\n**Usage:** \`${command.usage}\`\n\n**Details:**\n`;
+        command.details.forEach((detail) => {
+            fieldValue += `• ${detail}\n`;
+        });
+        embed.addFields({ name: command.name, value: fieldValue });
     });
+    embed.setFooter({ text: 'Built with ❤️ by the Nacho the 𐤊at Community', iconURL: 'https://i.imgur.com/4zYOZ5j.png' });
     message.channel.send({ embeds: [embed] });
 };
