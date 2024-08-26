@@ -537,7 +537,9 @@ const checkBalance = async (channel: DMChannel | TextBasedChannel, userId: strin
             .setDescription(`Balance for ${userSession.address}`)
             .addFields(
                 { name: 'Kaspa Balance', value: kaspaBalance },
-                { name: 'KRC20 Tokens', value: krc20Balances.length > 0 ? krc20Balances.join('\n') : 'No KRC20 tokens' }
+                { name: 'KRC20 Token Balances', value: krc20Balances.length > 0 ? 
+                    krc20Balances.map(({ ticker, balance }) => `${ticker}: ${balance}`).join('\n') : 
+                    'No KRC20 tokens' }
             )
             .setFooter({ text: `Network: ${userSession.network}` });
 
