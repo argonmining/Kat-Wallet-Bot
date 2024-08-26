@@ -11,4 +11,8 @@ export class Logger {
     static warn(message: string, meta?: object): void {
       console.warn(`WARN: ${message}`, meta);
     }
+
+    static debug(message: string, meta?: object): void {
+        console.log(`DEBUG: ${message}`, meta);
+    }
 }

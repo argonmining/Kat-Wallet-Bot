@@ -14,6 +14,8 @@ import { handleError, AppError } from '../utils/errorHandler';
 import { checkRateLimit, getRateLimitRemainingTime } from '../utils/rateLimit';
 import { validateAddress, validateAmount, sanitizeInput, validatePrivateKey, validateNetwork } from '../utils/inputValidation';
 import { retryableRequest, handleNetworkError } from '../utils/networkUtils';
+import { mintToken } from '../utils/mintToken';
+import { Address } from '../../wasm/kaspa/kaspa'; // Make sure to import Address from the correct path
 
 const { debounce } = lodash;
 
@@ -694,7 +696,69 @@ const sendTokenPrompt = async (channel: DMChannel | TextBasedChannel, userId: st
 
 const mintTokenPrompt = async (channel: DMChannel | TextBasedChannel, userId: string) => {
     Logger.info(`Starting mint token prompt for user: ${userId}`);
-    await channel.send('Mint token feature is coming soon!');
+    
+    try {
+        const userSession = userSettings.get(userId);
+        if (!userSession || !userSession.network || !userSession.privateKey || !userSession.address) {
+            throw new AppError('Invalid Session', 'Your wallet session is invalid. Please start over with the !wallet command.', 'INVALID_SESSION');
+        }
+
+        await channel.send('Please enter the ticker of the token you want to mint:');
+        const tickerResponse = await channel.awaitMessages({
+            filter: (m: Message) => m.author.id === userId,
+            max: 1,
+            time: 60000,
+            errors: ['time']
+        });
+        const ticker = tickerResponse.first()?.content.trim().toUpperCase();
+
+        await channel.send('Please enter the priority fee (in KAS) for this transaction:');
+        const feeResponse = await channel.awaitMessages({
+            filter: (m: Message) => {
+                try {
+                    validateAmount(m.content);
+                    return m.author.id === userId;
+                } catch {
+                    return false;
+                }
+            },
+            max: 1,
+            time: 60000,
+            errors: ['time']
+        });
+        const priorityFee = feeResponse.first()?.content.trim();
+
+        if (!ticker || !priorityFee) {
+            throw new AppError('Invalid Input', 'You must provide both a ticker and a priority fee.', 'INVALID_INPUT');
+        }
+
+        const mintingMessage = await channel.send(`Initiating minting process for ${ticker} tokens. This may take a few minutes...`);
+
+        try {
+            const revealHash = await mintToken(userId, userSession.network, ticker, priorityFee, userSession.privateKey);
+            
+            const explorerUrl = `https://explorer-tn10.kaspa.org/txs/${revealHash}`;
+            await mintingMessage.edit(`✅ Token minting successful for ${ticker}!\nReveal transaction hash: ${revealHash}\nYou can view the transaction details here: ${explorerUrl}`);
+
+            // Optionally, you can add a balance check here to show the user their updated token balance
+            await checkBalance(channel, userId);
+
+        } catch (mintingError) {
+            Logger.error(`Minting error for user ${userId}: ${mintingError}`);
+            if (mintingError instanceof AppError) {
+                await mintingMessage.edit(`❌ Error during token minting: ${mintingError.message}\nError code: ${mintingError.code}\nPlease try again or contact support if the issue persists.`);
+            } else {
+                await mintingMessage.edit(`❌ An unexpected error occurred during token minting. Please try again or contact support if the issue persists.`);
+            }
+        }
+
+    } catch (error) {
+        await handleError(error, channel, 'mintTokenPrompt');
+    } finally {
+        // Reset the state to WALLET_ACTIONS
+        userWalletStates.set(userId, WalletState.WALLET_ACTIONS);
+        await promptWalletActions(channel, userId);
+    }
 };
 
 const deployTokenPrompt = async (channel: DMChannel | TextBasedChannel, userId: string) => {
