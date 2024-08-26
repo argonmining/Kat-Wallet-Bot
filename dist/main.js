@@ -22,7 +22,7 @@ const client = new Client({
     ],
 });
 client.once('ready', () => {
-    console.log(`Logged in as ${client.user?.tag}!`);
+    console.log(`Kat Wallet Bot logged in as ${client.user?.tag}!`);
 });
 client.on('messageCreate', async (message) => {
     console.log(`Raw message received: ${message.content} from ${message.author.tag} in ${message.channel.type}`);

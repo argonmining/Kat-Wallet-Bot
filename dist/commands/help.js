@@ -6,7 +6,7 @@ export const handleHelpCommand = (message) => {
     const helpContent = JSON.parse(fs.readFileSync(helpContentPath, 'utf8'));
     const embed = new EmbedBuilder()
         .setColor(0x0099FF)
-        .setTitle('Nacho the 𐤊at Bot - Command Guide (!helpmenu)') // Updated title
+        .setTitle('Kat Wallet Bot - Command Guide (!helpmenu)') // Updated title
         .setDescription('Here\'s a list of available commands and their usage:')
         .setTimestamp();
     helpContent.commands.forEach((command) => {
