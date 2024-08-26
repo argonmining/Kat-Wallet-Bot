@@ -19,7 +19,7 @@ export const handleHelpCommand = (message: Message) => {
 
   const embed = new EmbedBuilder()
     .setColor(0x0099FF)
-    .setTitle('Nacho the 𐤊at Bot - Command Guide')
+    .setTitle('Kat Wallet Bot - Command Guide (!helpmenu)')  // Updated title
     .setDescription('Here\'s a list of available commands and their usage:')
     .setTimestamp();
 

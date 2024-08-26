@@ -52,7 +52,7 @@ client.on('messageCreate', async (message) => {
             case 'links':
                 await handleLinksCommand(message);
                 break;
-            case 'help':
+            case 'helpmenu': // Changed from 'help' to 'helpmenu'
                 await handleHelpCommand(message);
                 break;
             case 'donate':

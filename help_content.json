@@ -40,9 +40,9 @@
         ]
       },
       {
-        "name": "!help",
+        "name": "!helpmenu",
         "description": "Displays this help menu with detailed information about available commands.",
-        "usage": "!help",
+        "usage": "!helpmenu",
         "details": [
           "Shows a list of all available commands with their descriptions and usage instructions.",
           "No additional parameters required."

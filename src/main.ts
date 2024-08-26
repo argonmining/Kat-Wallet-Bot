@@ -26,7 +26,7 @@ const client = new Client({
 });
 
 client.once('ready', () => {
-  console.log(`Logged in as ${client.user?.tag}!`);
+  console.log(`Kat Wallet Bot logged in as ${client.user?.tag}!`);
 });
 
 client.on('messageCreate', async (message: Message) => {
@@ -61,7 +61,7 @@ client.on('messageCreate', async (message: Message) => {
             case 'links':
                 await handleLinksCommand(message);
                 break;
-            case 'help':
+            case 'helpmenu':  // Changed from 'help' to 'helpmenu'
                 await handleHelpCommand(message);
                 break;
             case 'donate':
