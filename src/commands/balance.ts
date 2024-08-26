@@ -86,6 +86,9 @@ export const handleBalanceCommand = async (message: Message, args: string[]) => 
             embed.addFields({ name: token.tick, value: formattedBalance, inline: true });
         });
 
+        // Add the footer
+        embed.setFooter({ text: 'Built with ❤️ by the Nacho the 𐤊at Community', iconURL: 'https://i.imgur.com/4zYOZ5j.png' });
+
         await message.reply({ embeds: [embed] });
     } catch (error) {
         await handleError(error, message.channel, 'handleBalanceCommand');
