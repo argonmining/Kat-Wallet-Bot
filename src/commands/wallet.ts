@@ -775,7 +775,10 @@ const mintTokenPrompt = async (channel: DMChannel | TextBasedChannel, userId: st
             const revealHash = await mintToken(userId, userSession.network, ticker, priorityFee, userSession.privateKey);
             
             const explorerUrl = `https://explorer-tn10.kaspa.org/txs/${revealHash}`;
-            await mintingMessage.edit(`✅ Token minting successful for ${ticker}!\nReveal transaction hash: ${revealHash}\nYou can view the transaction details here: ${explorerUrl}`);
+            await mintingMessage.edit(`✅ Token minting process completed for ${ticker}!\n` +
+                `Reveal transaction hash: ${revealHash}\n` +
+                `You can view the transaction details here: ${explorerUrl}\n` +
+                `Note: It may take a few more minutes for the transaction to be fully confirmed on the network.`);
 
             // Optionally, you can add a balance check here to show the user their updated token balance
             await checkBalance(channel, userId);
