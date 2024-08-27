@@ -83,7 +83,7 @@ function createTokenInfoEmbed(tokenInfo: TokenInfo, network: Network): EmbedBuil
         .setDescription(`${launchStatus}\n\n${tokenInfo.state.charAt(0).toUpperCase() + tokenInfo.state.slice(1)} on ${deploymentDate}`)
         .addFields(
             { name: 'Maximum Supply', value: formatNumber(tokenInfo.max, decimals), inline: true },
-            { name: 'Total Mints', value: tokenInfo.mintTotal, inline: true },
+            { name: 'Completed Mints', value: tokenInfo.mintTotal, inline: true },
             { name: 'Tokens Per Mint', value: formatNumber(tokenInfo.lim, decimals), inline: true },
             { name: 'Minted', value: `${formatNumber(tokenInfo.minted, decimals)} (${calculatePercentage(minted, maxSupply)})`, inline: true },
             { name: 'Mint Remaining', value: `${formatNumber(remaining.toString(), decimals)} (${calculatePercentage(remaining, maxSupply)})`, inline: true }
