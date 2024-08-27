@@ -75,7 +75,7 @@ function createTokenInfoEmbed(tokenInfo: TokenInfo, network: Network): EmbedBuil
     const preMint = BigInt(tokenInfo.pre);
 
     const deploymentDate = new Date(parseInt(tokenInfo.mtsAdd)).toUTCString();
-    const launchStatus = tokenInfo.pre === '0' ? '🚀 Fair Launch' : '⚠️ Has Pre-Allocation';
+    const launchStatus = tokenInfo.pre === '0' ? '🚀  Fair Launch' : '⚠️  Has Pre-Mint';
 
     const embed = new EmbedBuilder()
         .setColor(tokenInfo.pre === '0' ? 0x00FF00 : 0xFFA500)
@@ -91,7 +91,7 @@ function createTokenInfoEmbed(tokenInfo: TokenInfo, network: Network): EmbedBuil
 
     if (tokenInfo.pre !== '0') {
         embed.addFields(
-            { name: 'Pre-Allocation', value: `${formatNumber(tokenInfo.pre, decimals)} (${calculatePercentage(preMint, maxSupply)})`, inline: true }
+            { name: 'Pre-Minted', value: `${formatNumber(tokenInfo.pre, decimals)} (${calculatePercentage(preMint, maxSupply)})`, inline: true }
         );
     }
 
