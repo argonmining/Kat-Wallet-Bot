@@ -4,7 +4,6 @@ import { handleStatusCommand } from './commands/status.js';
 import { handleLinksCommand } from './commands/links.js';
 import { handleHelpCommand } from './commands/help.js';
 import { handleDonateCommand } from './commands/donate.js';
-import { handleWalletCommand } from './commands/wallet.js';
 import { handleBalanceCommand } from './commands/balance.js';
 import { handleError } from './utils/errorHandler';
 import express from 'express';
@@ -41,7 +40,7 @@ client.on('messageCreate', async (message: Message) => {
         // Handle DM messages
         if (message.channel.type === ChannelType.DM) {
             console.log(`[messageCreate] Processing DM from user: ${message.author.id}`);
-            await handleWalletCommand(message);
+            // Removed wallet handling for DMs
             return;
         }
 
@@ -51,10 +50,6 @@ client.on('messageCreate', async (message: Message) => {
 
         // Handle guild messages
         switch (command) {
-            case 'wallet':
-                console.log(`[messageCreate] Processing !wallet command from user: ${message.author.id}`);
-                await handleWalletCommand(message);
-                break;
             case 'status':
                 await handleStatusCommand(message, args);
                 break;

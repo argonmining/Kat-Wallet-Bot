@@ -1,37 +1,23 @@
 import { Message, EmbedBuilder } from 'discord.js';
-import fs from 'fs';
-import path from 'path';
-
-interface Command {
-  name: string;
-  description: string;
-  usage: string;
-  details: string[];
-}
-
-interface HelpContent {
-  commands: Command[];
-}
 
 export const handleHelpCommand = (message: Message) => {
-  const helpContentPath = path.join(process.cwd(), 'help_content.json');
-  const helpContent: HelpContent = JSON.parse(fs.readFileSync(helpContentPath, 'utf8'));
-
   const embed = new EmbedBuilder()
     .setColor(0x0099FF)
-    .setTitle('Kat Wallet Bot - Command Guide (!helpmenu)')  // Updated title
-    .setDescription('Here\'s a list of available commands and their usage:')
+    .setTitle('Kat Wallet Bot - Command Guide')
+    .setDescription('Here are the available commands:')
+    .addFields(
+      { name: '!status <TICKER> <NETWORK>', value: 'Get token info for a specific ticker and network.' },
+      { name: '!balance <WALLET_ADDRESS> <NETWORK>', value: 'Check KRC20 token balances for a wallet.' },
+      { name: '!links', value: 'Get official Kaspa community links.' },
+      { name: '!donate', value: 'View donation information for the bot.' },
+      { name: '!helpmenu', value: 'Display this help menu.' }
+    )
+    .addFields({ name: '\u200B', value: 'Network options: TN10, TN11, or Mainnet' })
+    .setFooter({ 
+      text: 'Built with ❤️ by the Nacho the 𐤊at Community', 
+      iconURL: 'https://i.imgur.com/4zYOZ5j.png' 
+    })
     .setTimestamp();
-
-  helpContent.commands.forEach((command: Command) => {
-    let fieldValue = `${command.description}\n\n**Usage:** \`${command.usage}\`\n\n**Details:**\n`;
-    command.details.forEach((detail: string) => {
-      fieldValue += `• ${detail}\n`;
-    });
-    embed.addFields({ name: command.name, value: fieldValue });
-  });
-
-  embed.setFooter({ text: 'Built with ❤️ by the Nacho the 𐤊at Community', iconURL: 'https://i.imgur.com/4zYOZ5j.png' });
 
   message.channel.send({ embeds: [embed] });
 };
