@@ -1,6 +1,5 @@
 import { Message, EmbedBuilder } from 'discord.js';
 import axios from 'axios';
-import { Network } from '../utils/userSettings';
 import { Logger } from '../utils/logger';
 import { handleError, AppError } from '../utils/errorHandler';
 
@@ -28,11 +27,10 @@ function formatBalance(balance: string, decimals: number): string {
     return formattedBalance;
 }
 
-async function fetchKRC20Balances(address: string, network: Network): Promise<TokenBalance[]> {
-    const envNetworkName = network.replace('-', '_').toUpperCase();
-    const apiBaseUrl = process.env[`${envNetworkName}_API_BASE_URL`];
+async function fetchKRC20Balances(address: string): Promise<TokenBalance[]> {
+    const apiBaseUrl = process.env.MAINNET_API_BASE_URL;
     if (!apiBaseUrl) {
-        throw new AppError('Invalid Network', `API base URL not found for network: ${network}`, 'INVALID_NETWORK');
+        throw new AppError('Invalid Configuration', 'API base URL not found for Mainnet', 'INVALID_CONFIGURATION');
     }
 
     const url = `${apiBaseUrl}/address/${address}/tokenlist`;
@@ -46,34 +44,16 @@ async function fetchKRC20Balances(address: string, network: Network): Promise<To
 }
 
 export const handleBalanceCommand = async (message: Message, args: string[]) => {
-    if (args.length !== 2) {
-        await message.reply('Please provide a valid wallet address and network. Usage: !balance <WALLET_ADDRESS> <NETWORK>');
+    if (args.length !== 1) {
+        await message.reply('Please provide a valid wallet address. Usage: !balance <WALLET_ADDRESS>');
         return;
     }
 
     const address = args[0];
-    const networkInput = args[1].toLowerCase();
-
-    let network: Network;
-    switch (networkInput) {
-        case 'tn10':
-            network = 'Testnet-10';
-            break;
-        case 'tn11':
-            network = 'Testnet-11';
-            break;
-        case 'mainnet':
-        case 'main':
-            network = 'Mainnet';
-            break;
-        default:
-            await message.reply('Invalid network. Please use TN10, TN11, or Mainnet.');
-            return;
-    }
 
     try {
-        Logger.info(`Balance command triggered for address: ${address} on network: ${network}`);
-        const balances = await fetchKRC20Balances(address, network);
+        Logger.info(`Balance command triggered for address: ${address} on Mainnet`);
+        const balances = await fetchKRC20Balances(address);
 
         const embed = new EmbedBuilder()
             .setColor(0x0099FF)
@@ -86,8 +66,7 @@ export const handleBalanceCommand = async (message: Message, args: string[]) => 
             embed.addFields({ name: token.tick, value: formattedBalance, inline: true });
         });
 
-        // Add the footer
-        embed.setFooter({ text: 'Built with ❤️ by the Nacho the 𐤊at Community', iconURL: 'https://i.imgur.com/4zYOZ5j.png' });
+        embed.setFooter({ text: 'Built with ❤️ by the Nacho the 𐤊at Community', iconURL: 'https://media.discordapp.net/attachments/1262092990273294458/1278406148235460709/NACHO_best_final.png?ex=66d0b001&is=66cf5e81&hm=0b93b66600c0b2f4b1146bedca819ef85c198f4a5dc9999ec1842d22cecf0c94&=&format=webp&quality=lossless' });
 
         await message.reply({ embeds: [embed] });
     } catch (error) {

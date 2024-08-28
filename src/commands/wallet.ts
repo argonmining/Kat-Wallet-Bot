@@ -716,7 +716,7 @@ const showTokenInfo = async (channel: DMChannel | TextBasedChannel, userId: stri
             throw new AppError('Invalid Input', 'You must provide a valid ticker.', 'INVALID_INPUT');
         }
 
-        const tokenInfoEmbed = await getTokenInfo(ticker, userSession.network);
+        const tokenInfoEmbed = await getTokenInfo(ticker);
         await channel.send({ embeds: [tokenInfoEmbed] });
     } catch (error) {
         await handleError(error, channel, 'showTokenInfo');

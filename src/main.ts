@@ -50,6 +50,9 @@ client.on('messageCreate', async (message: Message) => {
 
         // Handle guild messages
         switch (command) {
+            case 'balance':
+                await handleBalanceCommand(message, args);
+                break;
             case 'status':
                 await handleStatusCommand(message, args);
                 break;
@@ -61,9 +64,6 @@ client.on('messageCreate', async (message: Message) => {
                 break;
             case 'donate':
                 await handleDonateCommand(message);
-                break;
-            case 'balance':
-                await handleBalanceCommand(message, args);
                 break;
             default:
                 console.log('[messageCreate] Message did not match any known commands');

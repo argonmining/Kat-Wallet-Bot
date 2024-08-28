@@ -1,6 +1,5 @@
 import axios from 'axios';
 import { EmbedBuilder } from 'discord.js';
-import { Network } from './userSettings';
 import { Logger } from './logger';
 import { AppError } from './errorHandler';
 
@@ -21,10 +20,6 @@ interface TokenInfo {
     transferTotal: string;
     mintTotal: string;
     holder: { address: string; amount: string }[];
-}
-
-function getEnvNetworkName(network: Network): string {
-    return network.replace('-', '_').toUpperCase();
 }
 
 function formatNumber(num: string, decimals: number): string {
@@ -54,11 +49,10 @@ function calculatePercentage(part: bigint, whole: bigint): string {
     return ((Number(part) / Number(whole)) * 100).toFixed(2) + '%';
 }
 
-async function fetchTokenInfo(ticker: string, network: Network): Promise<TokenInfo> {
-    const envNetworkName = getEnvNetworkName(network);
-    const apiBaseUrl = process.env[`${envNetworkName}_API_BASE_URL`];
+async function fetchTokenInfo(ticker: string): Promise<TokenInfo> {
+    const apiBaseUrl = process.env.MAINNET_API_BASE_URL;
     if (!apiBaseUrl) {
-        throw new AppError('Invalid Network', `API base URL not found for network: ${network}`, 'INVALID_NETWORK');
+        throw new AppError('Invalid Configuration', 'API base URL not found for Mainnet', 'INVALID_CONFIGURATION');
     }
 
     const url = `${apiBaseUrl}/token/${ticker}`;
@@ -71,7 +65,7 @@ async function fetchTokenInfo(ticker: string, network: Network): Promise<TokenIn
     }
 }
 
-function createTokenInfoEmbed(tokenInfo: TokenInfo, network: Network): EmbedBuilder {
+function createTokenInfoEmbed(tokenInfo: TokenInfo): EmbedBuilder {
     const decimals = parseInt(tokenInfo.dec, 10);
     const maxSupply = BigInt(tokenInfo.max);
     const minted = BigInt(tokenInfo.minted);
@@ -123,32 +117,23 @@ function createTokenInfoEmbed(tokenInfo: TokenInfo, network: Network): EmbedBuil
     );
 
     // Add a field with a clickable link to the explorer
-    const explorerUrl = getExplorerUrl(tokenInfo.hashRev, network);
+    const explorerUrl = getExplorerUrl(tokenInfo.hashRev);
     embed.addFields(
         { name: 'Reveal Transaction', value: `[${tokenInfo.hashRev}](${explorerUrl})`, inline: false }
     );
 
     // Set a non-clickable footer
-    embed.setFooter({ text: 'Built with ❤️ by the Nacho the 𐤊at Community', iconURL: 'https://i.imgur.com/4zYOZ5j.png' });
+    embed.setFooter({ text: 'Built with ❤️ by the Nacho the 𐤊at Community', iconURL: 'https://media.discordapp.net/attachments/1262092990273294458/1278406148235460709/NACHO_best_final.png?ex=66d0b001&is=66cf5e81&hm=0b93b66600c0b2f4b1146bedca819ef85c198f4a5dc9999ec1842d22cecf0c94&=&format=webp&quality=lossless' });
 
     return embed;
 }
 
-// Helper function to get the correct explorer URL based on the network
-function getExplorerUrl(txHash: string, network: Network): string {
-    switch (network) {
-        case 'Mainnet':
-            return `https://explorer.kaspa.org/txs/${txHash}`;
-        case 'Testnet-10':
-            return `https://explorer-tn10.kaspa.org/txs/${txHash}`;
-        case 'Testnet-11':
-            return `https://explorer-tn11.kaspa.org/txs/${txHash}`;
-        default:
-            return `https://explorer.kaspa.org/txs/${txHash}`;
-    }
+// Update the getExplorerUrl function to always use Mainnet
+function getExplorerUrl(txHash: string): string {
+    return `https://explorer.kaspa.org/txs/${txHash}`;
 }
 
-export async function getTokenInfo(ticker: string, network: Network): Promise<EmbedBuilder> {
-    const tokenInfo = await fetchTokenInfo(ticker, network);
-    return createTokenInfoEmbed(tokenInfo, network);
+export async function getTokenInfo(ticker: string): Promise<EmbedBuilder> {
+    const tokenInfo = await fetchTokenInfo(ticker);
+    return createTokenInfoEmbed(tokenInfo);
 }
