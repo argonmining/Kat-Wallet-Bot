@@ -67,3 +67,6 @@ When you have new changes to deploy:
 
 Remember to run `pm2 save` after making changes to ensure the current process list is saved for automatic restarts.
 ```
+## Kasplex API Documentation
+
+https://docs.kasplex.org/tools-and-reference/kasplex-indexer-api
