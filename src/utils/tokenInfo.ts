@@ -66,6 +66,29 @@ async function fetchTokenInfo(ticker: string): Promise<TokenInfo> {
 }
 
 function createTokenInfoEmbed(tokenInfo: TokenInfo): EmbedBuilder {
+    const state = tokenInfo.state.toLowerCase();
+
+    if (state === 'unused' || state === 'ignored') {
+        const embed = new EmbedBuilder()
+            .setColor(0xFF0000) // Red color for warning
+            .setTitle(`${tokenInfo.tick} Token Information`)
+            .setTimestamp();
+
+        if (state === 'unused') {
+            embed.setDescription(`${tokenInfo.tick} has not been deployed as a KRC20 Token on Kasplex yet, I have no information to provide. Please try another ticker.`);
+        } else if (state === 'ignored') {
+            embed.setDescription(`${tokenInfo.tick} is an ignored ticker on Kasplex and cannot be deployed as a KRC20 token, I have no information to provide. Please try another ticker.`);
+        }
+
+        embed.setFooter({ 
+            text: 'Built with ❤️ by the Nacho the 𐤊at Community', 
+            iconURL: 'https://media.discordapp.net/attachments/1262092990273294458/1278406148235460709/NACHO_best_final.png?ex=66d0b001&is=66cf5e81&hm=0b93b66600c0b2f4b1146bedca819ef85c198f4a5dc9999ec1842d22cecf0c94&=&format=webp&quality=lossless' 
+        });
+
+        return embed;
+    }
+
+    // Existing code for 'deployed' and 'finished' states
     const decimals = parseInt(tokenInfo.dec, 10);
     const maxSupply = BigInt(tokenInfo.max);
     const minted = BigInt(tokenInfo.minted);
